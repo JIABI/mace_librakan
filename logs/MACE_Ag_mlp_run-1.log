@@ -1,0 +1,62 @@
+2025-11-06 18:48:28.476 INFO: ===========VERIFYING SETTINGS===========
+2025-11-06 18:48:28.476 WARNING: All of hidden_irreps, num_channels and max_L are specified
+2025-11-06 18:48:28.476 WARNING: Using num_channels and max_L to create hidden_irreps: 128x0e+128x1o.
+2025-11-06 18:48:28.476 INFO: Stage Two is activated as start_stage_two was defined
+2025-11-06 18:48:28.477 INFO: MACE version: 0.3.14
+2025-11-06 18:48:28.509 INFO: CUDA version: 11.8, CUDA device: 0
+2025-11-06 18:48:28.545 INFO: ===========LOADING INPUT DATA===========
+2025-11-06 18:48:28.545 INFO: Using heads: ['Default']
+2025-11-06 18:48:28.545 INFO: Using the key specifications to parse data:
+2025-11-06 18:48:28.545 INFO: Default: KeySpecification(info_keys={'energy': 'dft_energy', 'stress': 'stress', 'virials': 'REF_virials', 'dipole': 'dipole', 'head': 'head', 'elec_temp': 'elec_temp', 'total_charge': 'total_charge', 'polarizability': 'polarizability', 'total_spin': 'total_spin'}, arrays_keys={'forces': 'dft_forces', 'charges': 'REF_charges'})
+2025-11-06 18:48:28.545 INFO: =============    Processing head Default     ===========
+2025-11-06 18:48:28.993 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 18:48:29.027 INFO: Training set 1/1 [energy: 927, stress: 928, virials: 0, dipole components: 0, head: 928, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 927, charges: 0]
+2025-11-06 18:48:29.031 INFO: Total Training set [energy: 927, stress: 928, virials: 0, dipole components: 0, head: 928, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 927, charges: 0]
+2025-11-06 18:48:29.097 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 18:48:29.101 INFO: Validation set 1/1 [energy: 115, stress: 115, virials: 0, dipole components: 0, head: 115, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 115, charges: 0]
+2025-11-06 18:48:29.102 INFO: Total Validation set [energy: 115, stress: 115, virials: 0, dipole components: 0, head: 115, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 115, charges: 0]
+2025-11-06 18:48:29.166 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 18:48:29.171 INFO: Test set 1/1 [energy: 116, stress: 116, virials: 0, dipole components: 0, head: 116, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 116, charges: 0]
+2025-11-06 18:48:29.171 INFO: Total Test set [energy: 116, stress: 116, virials: 0, dipole components: 0, head: 116, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 116, charges: 0]
+2025-11-06 18:48:29.171 INFO: Total number of configurations: train=928, valid=115, tests=[sp_Default: 116],
+2025-11-06 18:48:29.172 INFO: Using atomic numbers from command line argument
+2025-11-06 18:48:29.172 INFO: Atomic Numbers used: [47]
+2025-11-06 18:48:29.172 INFO: Isolated Atomic Energies (E0s) not in training file, using command line argument
+2025-11-06 18:48:29.172 INFO: Atomic Energies used (z: eV) for head Default: {47: -2.670131299573519}
+2025-11-06 18:48:29.172 INFO: Processing datasets for head 'Default'
+2025-11-06 18:48:31.087 INFO: Combining 1 list datasets for head 'Default'
+2025-11-06 18:48:31.326 INFO: Combining 1 list datasets for head 'Default_valid'
+2025-11-06 18:48:31.326 INFO: Combined validation datasets for Default
+2025-11-06 18:48:31.326 INFO: Head 'Default' training dataset size: 928
+2025-11-06 18:48:31.327 INFO: Computing average number of neighbors
+2025-11-06 18:48:36.494 INFO: Average number of neighbors: 49.59964750748287
+2025-11-06 18:48:36.495 INFO: HEADS used: ['Default']
+2025-11-06 18:48:36.495 INFO: During training the following quantities will be reported: energy, forces, stress
+2025-11-06 18:48:36.496 INFO: ===========MODEL DETAILS===========
+2025-11-06 18:48:39.527 INFO: Building model
+2025-11-06 18:48:39.527 INFO: Message passing with 128 channels and max_L=1 (128x0e+128x1o)
+2025-11-06 18:48:39.527 INFO: 2 layers, each with correlation order: 2 (body order: 3) and spherical harmonics up to: l=3
+2025-11-06 18:48:39.528 INFO: 8 radial and 5 basis functions
+2025-11-06 18:48:39.528 INFO: Radial cutoff: 6.0 A (total receptive field for each atom: 12.0 A)
+2025-11-06 18:48:39.528 INFO: Distance transform for radial basis functions: Agnesi
+2025-11-06 18:48:39.528 INFO: Hidden irreps: 128x0e+128x1o
+2025-11-06 18:48:40.673 INFO: Total number of parameters: 565043
+2025-11-06 18:48:40.673 INFO: 
+2025-11-06 18:48:40.673 INFO: ===========OPTIMIZER INFORMATION===========
+2025-11-06 18:48:40.673 INFO: Using ADAM as parameter optimizer
+2025-11-06 18:48:40.673 INFO: Batch size: 4
+2025-11-06 18:48:40.673 INFO: Using Exponential Moving Average with decay: 0.99999
+2025-11-06 18:48:40.673 INFO: Number of gradient updates: 23200
+2025-11-06 18:48:40.674 INFO: Learning rate: 0.008, weight decay: 1e-08
+2025-11-06 18:48:40.674 INFO: UniversalLoss(energy_weight=1.000, forces_weight=10.000, stress_weight=10.000)
+2025-11-06 18:48:40.674 INFO: Stage Two (after 30 epochs) with loss function: UniversalLoss(energy_weight=1.000, forces_weight=50.000, stress_weight=10.000), with energy weight : 1.0, forces weight : 50.0, stress weight : 10.0 and learning rate : 0.001
+2025-11-06 18:48:40.773 INFO: Using gradient clipping with tolerance=100.000
+2025-11-06 18:48:40.774 INFO: 
+2025-11-06 18:48:40.774 INFO: ===========TRAINING===========
+2025-11-06 18:48:40.774 INFO: ===========MIXER CONFIG===========
+2025-11-06 18:48:40.774 INFO: Readout: NonLinearReadoutBlock  [kan=OFF | kaf=OFF | libra=OFF]
+2025-11-06 18:48:40.774 INFO: Interaction MLPs: node_librakan=OFF, edge_librakan=OFF
+2025-11-06 18:48:40.774 INFO: ==================================
+2025-11-06 18:48:40.774 INFO: Started training, reporting errors on validation set
+2025-11-06 18:48:40.774 INFO: Loss metrics on validation set
+2025-11-06 18:48:52.058 INFO: Initial: head: Default, loss=0.01611318, RMSE_E_per_atom=  248.58 meV, RMSE_F=  787.39 meV / A, RMSE_stress=   12.45 meV / A^3

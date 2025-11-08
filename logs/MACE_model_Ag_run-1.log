@@ -1,0 +1,300 @@
+2025-11-06 14:14:04.385 INFO: ===========VERIFYING SETTINGS===========
+2025-11-06 14:14:04.385 WARNING: All of hidden_irreps, num_channels and max_L are specified
+2025-11-06 14:14:04.385 WARNING: Using num_channels and max_L to create hidden_irreps: 128x0e+128x1o.
+2025-11-06 14:14:04.385 INFO: Stage Two is activated as start_stage_two was defined
+2025-11-06 14:14:04.385 INFO: MACE version: 0.3.14
+2025-11-06 14:14:04.418 INFO: CUDA version: 11.8, CUDA device: 0
+2025-11-06 14:14:04.452 INFO: ===========LOADING INPUT DATA===========
+2025-11-06 14:14:04.452 INFO: Using heads: ['Default']
+2025-11-06 14:14:04.452 INFO: Using the key specifications to parse data:
+2025-11-06 14:14:04.452 INFO: Default: KeySpecification(info_keys={'energy': 'dft_energy', 'stress': 'stress', 'virials': 'REF_virials', 'dipole': 'dipole', 'head': 'head', 'elec_temp': 'elec_temp', 'total_charge': 'total_charge', 'polarizability': 'polarizability', 'total_spin': 'total_spin'}, arrays_keys={'forces': 'dft_forces', 'charges': 'REF_charges'})
+2025-11-06 14:14:04.452 INFO: =============    Processing head Default     ===========
+2025-11-06 14:14:04.896 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 14:14:04.935 INFO: Training set 1/1 [energy: 927, stress: 928, virials: 0, dipole components: 0, head: 928, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 927, charges: 0]
+2025-11-06 14:14:04.940 INFO: Total Training set [energy: 927, stress: 928, virials: 0, dipole components: 0, head: 928, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 927, charges: 0]
+2025-11-06 14:14:05.015 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 14:14:05.020 INFO: Validation set 1/1 [energy: 115, stress: 115, virials: 0, dipole components: 0, head: 115, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 115, charges: 0]
+2025-11-06 14:14:05.021 INFO: Total Validation set [energy: 115, stress: 115, virials: 0, dipole components: 0, head: 115, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 115, charges: 0]
+2025-11-06 14:14:05.092 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 14:14:05.097 INFO: Test set 1/1 [energy: 116, stress: 116, virials: 0, dipole components: 0, head: 116, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 116, charges: 0]
+2025-11-06 14:14:05.098 INFO: Total Test set [energy: 116, stress: 116, virials: 0, dipole components: 0, head: 116, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 116, charges: 0]
+2025-11-06 14:14:05.098 INFO: Total number of configurations: train=928, valid=115, tests=[sp_Default: 116],
+2025-11-06 14:14:05.098 INFO: Using atomic numbers from command line argument
+2025-11-06 14:14:05.098 INFO: Atomic Numbers used: [47]
+2025-11-06 14:14:05.098 INFO: Isolated Atomic Energies (E0s) not in training file, using command line argument
+2025-11-06 14:14:05.099 INFO: Atomic Energies used (z: eV) for head Default: {47: -2.670131299573519}
+2025-11-06 14:14:05.099 INFO: Processing datasets for head 'Default'
+2025-11-06 14:14:07.139 INFO: Combining 1 list datasets for head 'Default'
+2025-11-06 14:14:07.410 INFO: Combining 1 list datasets for head 'Default_valid'
+2025-11-06 14:14:07.410 INFO: Combined validation datasets for Default
+2025-11-06 14:14:07.410 INFO: Head 'Default' training dataset size: 928
+2025-11-06 14:14:07.411 INFO: Computing average number of neighbors
+2025-11-06 14:14:12.367 INFO: Average number of neighbors: 49.59964750748287
+2025-11-06 14:14:12.368 INFO: HEADS used: ['Default']
+2025-11-06 14:14:12.368 INFO: During training the following quantities will be reported: energy, forces, stress
+2025-11-06 14:14:12.368 INFO: ===========MODEL DETAILS===========
+2025-11-06 14:14:15.175 INFO: Building model
+2025-11-06 14:14:15.176 INFO: Message passing with 128 channels and max_L=1 (128x0e+128x1o)
+2025-11-06 14:14:15.176 INFO: 2 layers, each with correlation order: 2 (body order: 3) and spherical harmonics up to: l=3
+2025-11-06 14:14:15.176 INFO: 8 radial and 5 basis functions
+2025-11-06 14:14:15.176 INFO: Radial cutoff: 6.0 A (total receptive field for each atom: 12.0 A)
+2025-11-06 14:14:15.176 INFO: Distance transform for radial basis functions: Agnesi
+2025-11-06 14:14:15.176 INFO: Hidden irreps: 128x0e+128x1o
+2025-11-06 15:50:28.812 INFO: ===========VERIFYING SETTINGS===========
+2025-11-06 15:50:28.813 WARNING: All of hidden_irreps, num_channels and max_L are specified
+2025-11-06 15:50:28.813 WARNING: Using num_channels and max_L to create hidden_irreps: 128x0e+128x1o.
+2025-11-06 15:50:28.813 INFO: Stage Two is activated as start_stage_two was defined
+2025-11-06 15:50:28.813 INFO: MACE version: 0.3.14
+2025-11-06 15:50:28.846 INFO: CUDA version: 11.8, CUDA device: 0
+2025-11-06 15:50:28.884 INFO: ===========LOADING INPUT DATA===========
+2025-11-06 15:50:28.884 INFO: Using heads: ['Default']
+2025-11-06 15:50:28.884 INFO: Using the key specifications to parse data:
+2025-11-06 15:50:28.884 INFO: Default: KeySpecification(info_keys={'energy': 'dft_energy', 'stress': 'stress', 'virials': 'REF_virials', 'dipole': 'dipole', 'head': 'head', 'elec_temp': 'elec_temp', 'total_charge': 'total_charge', 'polarizability': 'polarizability', 'total_spin': 'total_spin'}, arrays_keys={'forces': 'dft_forces', 'charges': 'REF_charges'})
+2025-11-06 15:50:28.884 INFO: =============    Processing head Default     ===========
+2025-11-06 15:50:29.331 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 15:50:29.365 INFO: Training set 1/1 [energy: 927, stress: 928, virials: 0, dipole components: 0, head: 928, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 927, charges: 0]
+2025-11-06 15:50:29.370 INFO: Total Training set [energy: 927, stress: 928, virials: 0, dipole components: 0, head: 928, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 927, charges: 0]
+2025-11-06 15:50:29.438 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 15:50:29.442 INFO: Validation set 1/1 [energy: 115, stress: 115, virials: 0, dipole components: 0, head: 115, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 115, charges: 0]
+2025-11-06 15:50:29.443 INFO: Total Validation set [energy: 115, stress: 115, virials: 0, dipole components: 0, head: 115, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 115, charges: 0]
+2025-11-06 15:50:29.512 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 15:50:29.517 INFO: Test set 1/1 [energy: 116, stress: 116, virials: 0, dipole components: 0, head: 116, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 116, charges: 0]
+2025-11-06 15:50:29.517 INFO: Total Test set [energy: 116, stress: 116, virials: 0, dipole components: 0, head: 116, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 116, charges: 0]
+2025-11-06 15:50:29.517 INFO: Total number of configurations: train=928, valid=115, tests=[sp_Default: 116],
+2025-11-06 15:50:29.518 INFO: Using atomic numbers from command line argument
+2025-11-06 15:50:29.518 INFO: Atomic Numbers used: [47]
+2025-11-06 15:50:29.518 INFO: Isolated Atomic Energies (E0s) not in training file, using command line argument
+2025-11-06 15:50:29.518 INFO: Atomic Energies used (z: eV) for head Default: {47: -2.670131299573519}
+2025-11-06 15:50:29.518 INFO: Processing datasets for head 'Default'
+2025-11-06 15:50:31.580 INFO: Combining 1 list datasets for head 'Default'
+2025-11-06 15:50:31.830 INFO: Combining 1 list datasets for head 'Default_valid'
+2025-11-06 15:50:31.830 INFO: Combined validation datasets for Default
+2025-11-06 15:50:31.830 INFO: Head 'Default' training dataset size: 928
+2025-11-06 15:50:31.831 INFO: Computing average number of neighbors
+2025-11-06 15:50:36.903 INFO: Average number of neighbors: 49.59964750748287
+2025-11-06 15:50:36.904 INFO: HEADS used: ['Default']
+2025-11-06 15:50:36.904 INFO: During training the following quantities will be reported: energy, forces, stress
+2025-11-06 15:50:36.904 INFO: ===========MODEL DETAILS===========
+2025-11-06 15:50:39.988 INFO: Building model
+2025-11-06 15:50:39.988 INFO: Message passing with 128 channels and max_L=1 (128x0e+128x1o)
+2025-11-06 15:50:39.988 INFO: 2 layers, each with correlation order: 2 (body order: 3) and spherical harmonics up to: l=3
+2025-11-06 15:50:39.988 INFO: 8 radial and 5 basis functions
+2025-11-06 15:50:39.988 INFO: Radial cutoff: 6.0 A (total receptive field for each atom: 12.0 A)
+2025-11-06 15:50:39.988 INFO: Distance transform for radial basis functions: Agnesi
+2025-11-06 15:50:39.988 INFO: Hidden irreps: 128x0e+128x1o
+2025-11-06 15:50:40.058 WARNING: ScaleShiftMACE does not accept mixer glue kwargs (['readout_cls', 'readout_kwargs', 'interaction_mlp_factories']); falling back without them. Details: InteractionBlock.__init__() got an unexpected keyword argument 'node_mlp_factory'
+2025-11-06 16:14:24.043 INFO: ===========VERIFYING SETTINGS===========
+2025-11-06 16:14:24.043 WARNING: All of hidden_irreps, num_channels and max_L are specified
+2025-11-06 16:14:24.043 WARNING: Using num_channels and max_L to create hidden_irreps: 128x0e+128x1o.
+2025-11-06 16:14:24.043 INFO: Stage Two is activated as start_stage_two was defined
+2025-11-06 16:14:24.043 INFO: MACE version: 0.3.14
+2025-11-06 16:14:24.073 INFO: CUDA version: 11.8, CUDA device: 0
+2025-11-06 16:14:24.109 INFO: ===========LOADING INPUT DATA===========
+2025-11-06 16:14:24.109 INFO: Using heads: ['Default']
+2025-11-06 16:14:24.109 INFO: Using the key specifications to parse data:
+2025-11-06 16:14:24.109 INFO: Default: KeySpecification(info_keys={'energy': 'dft_energy', 'stress': 'stress', 'virials': 'REF_virials', 'dipole': 'dipole', 'head': 'head', 'elec_temp': 'elec_temp', 'total_charge': 'total_charge', 'polarizability': 'polarizability', 'total_spin': 'total_spin'}, arrays_keys={'forces': 'dft_forces', 'charges': 'REF_charges'})
+2025-11-06 16:14:24.109 INFO: =============    Processing head Default     ===========
+2025-11-06 16:14:24.560 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 16:14:24.599 INFO: Training set 1/1 [energy: 927, stress: 928, virials: 0, dipole components: 0, head: 928, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 927, charges: 0]
+2025-11-06 16:14:24.604 INFO: Total Training set [energy: 927, stress: 928, virials: 0, dipole components: 0, head: 928, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 927, charges: 0]
+2025-11-06 16:14:24.675 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 16:14:24.679 INFO: Validation set 1/1 [energy: 115, stress: 115, virials: 0, dipole components: 0, head: 115, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 115, charges: 0]
+2025-11-06 16:14:24.680 INFO: Total Validation set [energy: 115, stress: 115, virials: 0, dipole components: 0, head: 115, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 115, charges: 0]
+2025-11-06 16:14:24.750 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 16:14:24.754 INFO: Test set 1/1 [energy: 116, stress: 116, virials: 0, dipole components: 0, head: 116, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 116, charges: 0]
+2025-11-06 16:14:24.755 INFO: Total Test set [energy: 116, stress: 116, virials: 0, dipole components: 0, head: 116, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 116, charges: 0]
+2025-11-06 16:14:24.755 INFO: Total number of configurations: train=928, valid=115, tests=[sp_Default: 116],
+2025-11-06 16:14:24.756 INFO: Using atomic numbers from command line argument
+2025-11-06 16:14:24.756 INFO: Atomic Numbers used: [47]
+2025-11-06 16:14:24.756 INFO: Isolated Atomic Energies (E0s) not in training file, using command line argument
+2025-11-06 16:14:24.756 INFO: Atomic Energies used (z: eV) for head Default: {47: -2.670131299573519}
+2025-11-06 16:14:24.756 INFO: Processing datasets for head 'Default'
+2025-11-06 16:14:26.723 INFO: Combining 1 list datasets for head 'Default'
+2025-11-06 16:14:26.966 INFO: Combining 1 list datasets for head 'Default_valid'
+2025-11-06 16:14:26.966 INFO: Combined validation datasets for Default
+2025-11-06 16:14:26.966 INFO: Head 'Default' training dataset size: 928
+2025-11-06 16:14:26.967 INFO: Computing average number of neighbors
+2025-11-06 16:14:31.688 INFO: Average number of neighbors: 49.59964750748287
+2025-11-06 16:14:31.688 INFO: HEADS used: ['Default']
+2025-11-06 16:14:31.688 INFO: During training the following quantities will be reported: energy, forces, stress
+2025-11-06 16:14:31.688 INFO: ===========MODEL DETAILS===========
+2025-11-06 16:14:34.426 INFO: Building model
+2025-11-06 16:14:34.427 INFO: Message passing with 128 channels and max_L=1 (128x0e+128x1o)
+2025-11-06 16:14:34.427 INFO: 2 layers, each with correlation order: 2 (body order: 3) and spherical harmonics up to: l=3
+2025-11-06 16:14:34.427 INFO: 8 radial and 5 basis functions
+2025-11-06 16:14:34.427 INFO: Radial cutoff: 6.0 A (total receptive field for each atom: 12.0 A)
+2025-11-06 16:14:34.427 INFO: Distance transform for radial basis functions: Agnesi
+2025-11-06 16:14:34.427 INFO: Hidden irreps: 128x0e+128x1o
+2025-11-06 16:14:34.428 INFO: [base_kwargs] The constructor ScaleShiftMACE does not accept the following kwargs and they will be ignored: ['MLP_irreps', 'apply_cutoff', 'atomic_energies', 'atomic_numbers', 'avg_num_neighbors', 'correlation', 'cueq_config', 'distance_transform', 'edge_irreps', 'embedding_specs', 'gate', 'heads', 'hidden_irreps', 'interaction_cls', 'interaction_cls_first', 'max_ell', 'mil_d_attn', 'mil_dropout', 'num_bessel', 'num_elements', 'num_interactions', 'num_polynomial_cutoff', 'pair_repulsion', 'r_max', 'radial_MLP', 'radial_type', 'readout_cls', 'readout_kwargs', 'use_agnostic_product', 'use_embedding_readout', 'use_last_readout_only', 'use_mil_pooling', 'use_reduced_cg', 'use_so3']
+2025-11-06 16:14:34.428 INFO: Retrying ScaleShiftMACE without extra kwargs due to: MACE.__init__() missing 15 required positional arguments: 'r_max', 'num_bessel', 'num_polynomial_cutoff', 'max_ell', 'interaction_cls', 'interaction_cls_first', 'num_interactions', 'num_elements', 'hidden_irreps', 'MLP_irreps', 'atomic_energies', 'avg_num_neighbors', 'atomic_numbers', 'correlation', and 'gate'
+2025-11-06 16:19:13.085 INFO: ===========VERIFYING SETTINGS===========
+2025-11-06 16:19:13.085 WARNING: All of hidden_irreps, num_channels and max_L are specified
+2025-11-06 16:19:13.085 WARNING: Using num_channels and max_L to create hidden_irreps: 128x0e+128x1o.
+2025-11-06 16:19:13.085 INFO: Stage Two is activated as start_stage_two was defined
+2025-11-06 16:19:13.085 INFO: MACE version: 0.3.14
+2025-11-06 16:19:13.115 INFO: CUDA version: 11.8, CUDA device: 0
+2025-11-06 16:19:13.149 INFO: ===========LOADING INPUT DATA===========
+2025-11-06 16:19:13.149 INFO: Using heads: ['Default']
+2025-11-06 16:19:13.150 INFO: Using the key specifications to parse data:
+2025-11-06 16:19:13.150 INFO: Default: KeySpecification(info_keys={'energy': 'dft_energy', 'stress': 'stress', 'virials': 'REF_virials', 'dipole': 'dipole', 'head': 'head', 'elec_temp': 'elec_temp', 'total_charge': 'total_charge', 'polarizability': 'polarizability', 'total_spin': 'total_spin'}, arrays_keys={'forces': 'dft_forces', 'charges': 'REF_charges'})
+2025-11-06 16:19:13.150 INFO: =============    Processing head Default     ===========
+2025-11-06 16:19:13.591 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 16:19:13.624 INFO: Training set 1/1 [energy: 927, stress: 928, virials: 0, dipole components: 0, head: 928, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 927, charges: 0]
+2025-11-06 16:19:13.629 INFO: Total Training set [energy: 927, stress: 928, virials: 0, dipole components: 0, head: 928, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 927, charges: 0]
+2025-11-06 16:19:13.693 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 16:19:13.698 INFO: Validation set 1/1 [energy: 115, stress: 115, virials: 0, dipole components: 0, head: 115, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 115, charges: 0]
+2025-11-06 16:19:13.699 INFO: Total Validation set [energy: 115, stress: 115, virials: 0, dipole components: 0, head: 115, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 115, charges: 0]
+2025-11-06 16:19:13.766 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 16:19:13.770 INFO: Test set 1/1 [energy: 116, stress: 116, virials: 0, dipole components: 0, head: 116, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 116, charges: 0]
+2025-11-06 16:19:13.771 INFO: Total Test set [energy: 116, stress: 116, virials: 0, dipole components: 0, head: 116, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 116, charges: 0]
+2025-11-06 16:19:13.771 INFO: Total number of configurations: train=928, valid=115, tests=[sp_Default: 116],
+2025-11-06 16:19:13.772 INFO: Using atomic numbers from command line argument
+2025-11-06 16:19:13.772 INFO: Atomic Numbers used: [47]
+2025-11-06 16:19:13.772 INFO: Isolated Atomic Energies (E0s) not in training file, using command line argument
+2025-11-06 16:19:13.772 INFO: Atomic Energies used (z: eV) for head Default: {47: -2.670131299573519}
+2025-11-06 16:19:13.772 INFO: Processing datasets for head 'Default'
+2025-11-06 16:19:15.620 INFO: Combining 1 list datasets for head 'Default'
+2025-11-06 16:19:15.852 INFO: Combining 1 list datasets for head 'Default_valid'
+2025-11-06 16:19:15.852 INFO: Combined validation datasets for Default
+2025-11-06 16:19:15.852 INFO: Head 'Default' training dataset size: 928
+2025-11-06 16:19:15.853 INFO: Computing average number of neighbors
+2025-11-06 16:19:20.563 INFO: Average number of neighbors: 49.59964750748287
+2025-11-06 16:19:20.564 INFO: HEADS used: ['Default']
+2025-11-06 16:19:20.564 INFO: During training the following quantities will be reported: energy, forces, stress
+2025-11-06 16:19:20.564 INFO: ===========MODEL DETAILS===========
+2025-11-06 16:19:23.399 INFO: Building model
+2025-11-06 16:19:23.399 INFO: Message passing with 128 channels and max_L=1 (128x0e+128x1o)
+2025-11-06 16:19:23.399 INFO: 2 layers, each with correlation order: 2 (body order: 3) and spherical harmonics up to: l=3
+2025-11-06 16:19:23.399 INFO: 8 radial and 5 basis functions
+2025-11-06 16:19:23.399 INFO: Radial cutoff: 6.0 A (total receptive field for each atom: 12.0 A)
+2025-11-06 16:19:23.399 INFO: Distance transform for radial basis functions: Agnesi
+2025-11-06 16:19:23.399 INFO: Hidden irreps: 128x0e+128x1o
+2025-11-06 16:19:23.459 INFO: Retrying ScaleShiftMACE without extra kwargs due to: InteractionBlock.__init__() got an unexpected keyword argument 'node_mlp_factory'
+2025-11-06 16:47:26.171 INFO: ===========VERIFYING SETTINGS===========
+2025-11-06 16:47:26.172 WARNING: All of hidden_irreps, num_channels and max_L are specified
+2025-11-06 16:47:26.172 WARNING: Using num_channels and max_L to create hidden_irreps: 128x0e+128x1o.
+2025-11-06 16:47:26.172 INFO: Stage Two is activated as start_stage_two was defined
+2025-11-06 16:47:26.172 INFO: MACE version: 0.3.14
+2025-11-06 16:47:26.213 INFO: CUDA version: 11.8, CUDA device: 0
+2025-11-06 16:47:26.266 INFO: ===========LOADING INPUT DATA===========
+2025-11-06 16:47:26.266 INFO: Using heads: ['Default']
+2025-11-06 16:47:26.266 INFO: Using the key specifications to parse data:
+2025-11-06 16:47:26.266 INFO: Default: KeySpecification(info_keys={'energy': 'dft_energy', 'stress': 'stress', 'virials': 'REF_virials', 'dipole': 'dipole', 'head': 'head', 'elec_temp': 'elec_temp', 'total_charge': 'total_charge', 'polarizability': 'polarizability', 'total_spin': 'total_spin'}, arrays_keys={'forces': 'dft_forces', 'charges': 'REF_charges'})
+2025-11-06 16:47:26.266 INFO: =============    Processing head Default     ===========
+2025-11-06 16:47:26.788 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 16:47:26.854 INFO: Training set 1/1 [energy: 927, stress: 928, virials: 0, dipole components: 0, head: 928, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 927, charges: 0]
+2025-11-06 16:47:26.861 INFO: Total Training set [energy: 927, stress: 928, virials: 0, dipole components: 0, head: 928, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 927, charges: 0]
+2025-11-06 16:47:26.979 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 16:47:26.984 INFO: Validation set 1/1 [energy: 115, stress: 115, virials: 0, dipole components: 0, head: 115, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 115, charges: 0]
+2025-11-06 16:47:26.984 INFO: Total Validation set [energy: 115, stress: 115, virials: 0, dipole components: 0, head: 115, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 115, charges: 0]
+2025-11-06 16:47:27.057 WARNING: Since ASE version 3.23.0b1, using stress_key 'stress' is no longer safe when communicating between MACE and ASE. We recommend using a different key, rewriting 'stress' to 'REF_stress'. You need to use --stress_key='REF_stress' to specify the chosen key name.
+2025-11-06 16:47:27.062 INFO: Test set 1/1 [energy: 116, stress: 116, virials: 0, dipole components: 0, head: 116, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 116, charges: 0]
+2025-11-06 16:47:27.063 INFO: Total Test set [energy: 116, stress: 116, virials: 0, dipole components: 0, head: 116, elec_temp: 0, total_charge: 0, polarizability: 0, total_spin: 0, forces: 116, charges: 0]
+2025-11-06 16:47:27.063 INFO: Total number of configurations: train=928, valid=115, tests=[sp_Default: 116],
+2025-11-06 16:47:27.063 INFO: Using atomic numbers from command line argument
+2025-11-06 16:47:27.063 INFO: Atomic Numbers used: [47]
+2025-11-06 16:47:27.064 INFO: Isolated Atomic Energies (E0s) not in training file, using command line argument
+2025-11-06 16:47:27.064 INFO: Atomic Energies used (z: eV) for head Default: {47: -2.670131299573519}
+2025-11-06 16:47:27.064 INFO: Processing datasets for head 'Default'
+2025-11-06 16:47:29.063 INFO: Combining 1 list datasets for head 'Default'
+2025-11-06 16:47:29.313 INFO: Combining 1 list datasets for head 'Default_valid'
+2025-11-06 16:47:29.313 INFO: Combined validation datasets for Default
+2025-11-06 16:47:29.313 INFO: Head 'Default' training dataset size: 928
+2025-11-06 16:47:29.314 INFO: Computing average number of neighbors
+2025-11-06 16:47:34.222 INFO: Average number of neighbors: 49.59964750748287
+2025-11-06 16:47:34.222 INFO: HEADS used: ['Default']
+2025-11-06 16:47:34.222 INFO: During training the following quantities will be reported: energy, forces, stress
+2025-11-06 16:47:34.223 INFO: ===========MODEL DETAILS===========
+2025-11-06 16:47:36.961 INFO: Building model
+2025-11-06 16:47:36.962 INFO: Message passing with 128 channels and max_L=1 (128x0e+128x1o)
+2025-11-06 16:47:36.962 INFO: 2 layers, each with correlation order: 2 (body order: 3) and spherical harmonics up to: l=3
+2025-11-06 16:47:36.962 INFO: 8 radial and 5 basis functions
+2025-11-06 16:47:36.962 INFO: Radial cutoff: 6.0 A (total receptive field for each atom: 12.0 A)
+2025-11-06 16:47:36.962 INFO: Distance transform for radial basis functions: Agnesi
+2025-11-06 16:47:36.962 INFO: Hidden irreps: 128x0e+128x1o
+2025-11-06 16:47:38.017 INFO: Total number of parameters: 565043
+2025-11-06 16:47:38.018 INFO: 
+2025-11-06 16:47:38.018 INFO: ===========OPTIMIZER INFORMATION===========
+2025-11-06 16:47:38.018 INFO: Using ADAM as parameter optimizer
+2025-11-06 16:47:38.018 INFO: Batch size: 4
+2025-11-06 16:47:38.018 INFO: Using Exponential Moving Average with decay: 0.99999
+2025-11-06 16:47:38.018 INFO: Number of gradient updates: 23200
+2025-11-06 16:47:38.018 INFO: Learning rate: 0.008, weight decay: 1e-08
+2025-11-06 16:47:38.018 INFO: UniversalLoss(energy_weight=1.000, forces_weight=10.000, stress_weight=10.000)
+2025-11-06 16:47:38.019 INFO: Stage Two (after 30 epochs) with loss function: UniversalLoss(energy_weight=1.000, forces_weight=50.000, stress_weight=10.000), with energy weight : 1.0, forces weight : 50.0, stress weight : 10.0 and learning rate : 0.001
+2025-11-06 16:47:38.119 INFO: Using gradient clipping with tolerance=100.000
+2025-11-06 16:47:38.120 INFO: 
+2025-11-06 16:47:38.120 INFO: ===========TRAINING===========
+2025-11-06 16:47:38.120 INFO: ===========MIXER CONFIG===========
+2025-11-06 16:47:38.120 INFO: Readout: NonLinearReadoutBlock  [kan=OFF | kaf=OFF | libra=OFF]
+2025-11-06 16:47:38.120 INFO: Interaction MLPs: node_librakan=OFF, edge_librakan=OFF
+2025-11-06 16:47:38.120 INFO: ==================================
+2025-11-06 16:47:38.120 INFO: Started training, reporting errors on validation set
+2025-11-06 16:47:38.120 INFO: Loss metrics on validation set
+2025-11-06 16:47:49.823 INFO: Initial: head: Default, loss=0.01611318, RMSE_E_per_atom=  248.58 meV, RMSE_F=  787.39 meV / A, RMSE_stress=   12.45 meV / A^3
+2025-11-06 16:48:52.649 INFO: Epoch 0: head: Default, loss=0.00141863, RMSE_E_per_atom=   10.49 meV, RMSE_F=   84.61 meV / A, RMSE_stress=    2.51 meV / A^3
+2025-11-06 16:49:43.293 INFO: Epoch 1: head: Default, loss=0.00074959, RMSE_E_per_atom=    7.83 meV, RMSE_F=   50.92 meV / A, RMSE_stress=    2.47 meV / A^3
+2025-11-06 16:50:33.416 INFO: Epoch 2: head: Default, loss=0.00051059, RMSE_E_per_atom=    7.36 meV, RMSE_F=   39.15 meV / A, RMSE_stress=    2.56 meV / A^3
+2025-11-06 16:51:23.449 INFO: Epoch 3: head: Default, loss=0.00043518, RMSE_E_per_atom=    7.40 meV, RMSE_F=   36.07 meV / A, RMSE_stress=    2.57 meV / A^3
+2025-11-06 16:52:13.453 INFO: Epoch 4: head: Default, loss=0.00040661, RMSE_E_per_atom=    7.42 meV, RMSE_F=   35.10 meV / A, RMSE_stress=    2.57 meV / A^3
+2025-11-06 16:53:03.668 INFO: Epoch 5: head: Default, loss=0.00038659, RMSE_E_per_atom=    7.31 meV, RMSE_F=   34.42 meV / A, RMSE_stress=    2.57 meV / A^3
+2025-11-06 16:53:53.619 INFO: Epoch 6: head: Default, loss=0.00037457, RMSE_E_per_atom=    7.32 meV, RMSE_F=   34.01 meV / A, RMSE_stress=    2.56 meV / A^3
+2025-11-06 16:54:44.077 INFO: Epoch 7: head: Default, loss=0.00036232, RMSE_E_per_atom=    7.32 meV, RMSE_F=   33.59 meV / A, RMSE_stress=    2.56 meV / A^3
+2025-11-06 16:55:34.296 INFO: Epoch 8: head: Default, loss=0.00035516, RMSE_E_per_atom=    7.32 meV, RMSE_F=   33.37 meV / A, RMSE_stress=    2.56 meV / A^3
+2025-11-06 16:56:24.261 INFO: Epoch 9: head: Default, loss=0.00034997, RMSE_E_per_atom=    7.33 meV, RMSE_F=   33.25 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 16:57:14.393 INFO: Epoch 10: head: Default, loss=0.00034357, RMSE_E_per_atom=    7.33 meV, RMSE_F=   33.04 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 16:58:04.464 INFO: Epoch 11: head: Default, loss=0.00033790, RMSE_E_per_atom=    7.32 meV, RMSE_F=   32.90 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 16:58:54.454 INFO: Epoch 12: head: Default, loss=0.00033277, RMSE_E_per_atom=    7.31 meV, RMSE_F=   32.76 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 16:59:44.631 INFO: Epoch 13: head: Default, loss=0.00032960, RMSE_E_per_atom=    7.35 meV, RMSE_F=   32.70 meV / A, RMSE_stress=    2.54 meV / A^3
+2025-11-06 17:00:34.492 INFO: Epoch 14: head: Default, loss=0.00032245, RMSE_E_per_atom=    7.32 meV, RMSE_F=   32.47 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 17:01:24.562 INFO: Epoch 15: head: Default, loss=0.00031785, RMSE_E_per_atom=    7.31 meV, RMSE_F=   32.33 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 17:02:14.793 INFO: Epoch 16: head: Default, loss=0.00031328, RMSE_E_per_atom=    7.31 meV, RMSE_F=   32.20 meV / A, RMSE_stress=    2.54 meV / A^3
+2025-11-06 17:03:04.762 INFO: Epoch 17: head: Default, loss=0.00030852, RMSE_E_per_atom=    7.31 meV, RMSE_F=   32.06 meV / A, RMSE_stress=    2.54 meV / A^3
+2025-11-06 17:03:54.555 INFO: Epoch 18: head: Default, loss=0.00030561, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.98 meV / A, RMSE_stress=    2.54 meV / A^3
+2025-11-06 17:04:44.778 INFO: Epoch 19: head: Default, loss=0.00030271, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.89 meV / A, RMSE_stress=    2.54 meV / A^3
+2025-11-06 17:05:35.029 INFO: Epoch 20: head: Default, loss=0.00029889, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.76 meV / A, RMSE_stress=    2.54 meV / A^3
+2025-11-06 17:06:24.813 INFO: Epoch 21: head: Default, loss=0.00029580, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.67 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 17:07:15.051 INFO: Epoch 22: head: Default, loss=0.00029302, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.59 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 17:08:04.979 INFO: Epoch 23: head: Default, loss=0.00029040, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.52 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 17:08:55.226 INFO: Epoch 24: head: Default, loss=0.00028821, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.47 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 17:09:45.180 INFO: Epoch 25: head: Default, loss=0.00028621, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.42 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 17:10:35.100 INFO: Epoch 26: head: Default, loss=0.00028446, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.37 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 17:11:24.947 INFO: Epoch 27: head: Default, loss=0.00028266, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.32 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 17:12:15.118 INFO: Epoch 28: head: Default, loss=0.00028101, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.28 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 17:13:05.100 INFO: Epoch 29: head: Default, loss=0.00027934, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.24 meV / A, RMSE_stress=    2.55 meV / A^3
+2025-11-06 17:13:05.142 INFO: Changing loss based on Stage Two Weights
+2025-11-06 17:13:55.191 INFO: Epoch 30: head: Default, loss=0.00132602, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.18 meV / A, RMSE_stress=    2.56 meV / A^3
+2025-11-06 17:14:47.364 INFO: Epoch 31: head: Default, loss=0.00131587, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.12 meV / A, RMSE_stress=    2.56 meV / A^3
+2025-11-06 17:15:38.458 INFO: Epoch 32: head: Default, loss=0.00130676, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.07 meV / A, RMSE_stress=    2.57 meV / A^3
+2025-11-06 17:16:28.498 INFO: Epoch 33: head: Default, loss=0.00129868, RMSE_E_per_atom=    7.31 meV, RMSE_F=   31.03 meV / A, RMSE_stress=    2.57 meV / A^3
+2025-11-06 17:17:18.431 INFO: Epoch 34: head: Default, loss=0.00129111, RMSE_E_per_atom=    7.32 meV, RMSE_F=   30.99 meV / A, RMSE_stress=    2.57 meV / A^3
+2025-11-06 17:18:08.727 INFO: Epoch 35: head: Default, loss=0.00128428, RMSE_E_per_atom=    7.32 meV, RMSE_F=   30.95 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:18:58.671 INFO: Epoch 36: head: Default, loss=0.00127857, RMSE_E_per_atom=    7.32 meV, RMSE_F=   30.93 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:19:48.611 INFO: Epoch 37: head: Default, loss=0.00127323, RMSE_E_per_atom=    7.32 meV, RMSE_F=   30.90 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:20:38.534 INFO: Epoch 38: head: Default, loss=0.00126827, RMSE_E_per_atom=    7.32 meV, RMSE_F=   30.87 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:21:28.636 INFO: Epoch 39: head: Default, loss=0.00126364, RMSE_E_per_atom=    7.32 meV, RMSE_F=   30.85 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:22:18.638 INFO: Epoch 40: head: Default, loss=0.00125933, RMSE_E_per_atom=    7.32 meV, RMSE_F=   30.83 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:23:09.117 INFO: Epoch 41: head: Default, loss=0.00125543, RMSE_E_per_atom=    7.32 meV, RMSE_F=   30.81 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:23:59.035 INFO: Epoch 42: head: Default, loss=0.00125175, RMSE_E_per_atom=    7.32 meV, RMSE_F=   30.79 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:24:48.923 INFO: Epoch 43: head: Default, loss=0.00124844, RMSE_E_per_atom=    7.32 meV, RMSE_F=   30.78 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:25:38.897 INFO: Epoch 44: head: Default, loss=0.00124515, RMSE_E_per_atom=    7.32 meV, RMSE_F=   30.76 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:26:28.602 INFO: Epoch 45: head: Default, loss=0.00124217, RMSE_E_per_atom=    7.32 meV, RMSE_F=   30.75 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:27:18.759 INFO: Epoch 46: head: Default, loss=0.00123928, RMSE_E_per_atom=    7.32 meV, RMSE_F=   30.73 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:28:08.442 INFO: Epoch 47: head: Default, loss=0.00123649, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.72 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:28:58.439 INFO: Epoch 48: head: Default, loss=0.00123379, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.70 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:29:48.252 INFO: Epoch 49: head: Default, loss=0.00123122, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.69 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:30:38.049 INFO: Epoch 50: head: Default, loss=0.00122864, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.68 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:31:27.767 INFO: Epoch 51: head: Default, loss=0.00122619, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.67 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:32:17.471 INFO: Epoch 52: head: Default, loss=0.00122389, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.65 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:33:07.259 INFO: Epoch 53: head: Default, loss=0.00122159, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.64 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:33:56.957 INFO: Epoch 54: head: Default, loss=0.00121940, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.64 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:34:47.163 INFO: Epoch 55: head: Default, loss=0.00121728, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.63 meV / A, RMSE_stress=    2.58 meV / A^3
+2025-11-06 17:35:37.607 INFO: Epoch 56: head: Default, loss=0.00121520, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.62 meV / A, RMSE_stress=    2.59 meV / A^3
+2025-11-06 17:36:27.327 INFO: Epoch 57: head: Default, loss=0.00121312, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.61 meV / A, RMSE_stress=    2.59 meV / A^3
+2025-11-06 17:37:17.082 INFO: Epoch 58: head: Default, loss=0.00121116, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.60 meV / A, RMSE_stress=    2.59 meV / A^3
+2025-11-06 17:38:06.893 INFO: Epoch 59: head: Default, loss=0.00120918, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.59 meV / A, RMSE_stress=    2.59 meV / A^3
+2025-11-06 17:38:56.620 INFO: Epoch 60: head: Default, loss=0.00120727, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.58 meV / A, RMSE_stress=    2.59 meV / A^3
+2025-11-06 17:39:47.028 INFO: Epoch 61: head: Default, loss=0.00120534, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.57 meV / A, RMSE_stress=    2.59 meV / A^3
+2025-11-06 17:40:36.857 INFO: Epoch 62: head: Default, loss=0.00120341, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.56 meV / A, RMSE_stress=    2.59 meV / A^3
+2025-11-06 17:41:26.700 INFO: Epoch 63: head: Default, loss=0.00120156, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.55 meV / A, RMSE_stress=    2.59 meV / A^3
+2025-11-06 17:42:16.728 INFO: Epoch 64: head: Default, loss=0.00119983, RMSE_E_per_atom=    7.31 meV, RMSE_F=   30.55 meV / A, RMSE_stress=    2.59 meV / A^3
