@@ -1,7 +1,6 @@
 ###########################################################################################
 # Elementary Block for Building O(3) Equivariant Higher Order Message Passing Neural Network
 # Authors: Ilyes Batatia, Gregor Simm
-# Modified: Integrated PAN Pooling (Physics-Aware Neighbourhood Pooling) into all Interaction Blocks
 # This program is distributed under the MIT License (see MIT.md)
 ###########################################################################################
 
@@ -29,9 +28,6 @@ from mace.tools.compile import simplify_if_compile
 from mace.tools.scatter import scatter_sum
 from mace.tools.utils import LAMMPS_MP
 
-# === Import PAN Pooling ===
-from mace.modules.mil_pooling import PANPooling
-
 from .irreps_tools import mask_head, reshape_irreps, tp_out_irreps_with_instructions
 from .radial import (
     AgnesiTransform,
@@ -44,10 +40,11 @@ from .radial import (
 )
 
 # --------------------------- Libra / KAN / KAF mixers (readout & tiny MLP drop-ins) ---------------------------
+# We keep these imports local to avoid breaking repositories that don't ship these files
 try:
     from mace.modules.mixers.librakan import GeneralLibraKAN
 except Exception:
-    from mace.modules.mixers.librakan import GeneralLibraKAN
+    from mace.modules.mixers.librakan import GeneralLibraKAN  # fallback if package layout differs
 
 try:
     from mace.modules.mixers.edge_librakan import EdgeLibraKAN
@@ -55,44 +52,22 @@ except Exception:
     from mace.modules.mixers.edge_librakan import EdgeLibraKAN
 
 try:
-    from mace.modules.mixers.edge_physics_spectral import EdgePhysicsSpectralMixer
+    from mace.modules.mixers.node_librakan import NodeLibraKAN
 except Exception:
-    from mace.modules.mixers.edge_physics_spectral import EdgePhysicsSpectralMixer
+    from mace.modules.mixers.node_librakan import NodeLibraKAN
 
-try:
-    from mace.modules.mixers.node_scalar_librakan import NodeScalarLibraKAN
-except Exception:
-    from mace.modules.mixers.node_scalar_librakan import NodeScalarLibraKAN
-
-
-def _call_edge_mlp(module, edge_feats, edge_geom=None):
-    try:
-        return module(edge_feats, edge_geom)
-    except TypeError:
-        return module(edge_feats)
-
-
-def _build_edge_geom(edge_feats, edge_attrs, edge_index, edge_lengths=None):
-    if edge_lengths is not None:
-        r_ij = edge_lengths
-    else:
-        r_ij = None
-    return {
-        "r_ij": r_ij,
-        "z_i": None,
-        "z_j": None,
-        "rho_i": None,
-        "angle": None,
-        "cna": None,
-        "sender_index": edge_index[0],
-        "receiver_index": edge_index[1],
-    }
-
+# Optional: KAN / KAF readout mixers (you said KAN/KAF only touch readout MLP)
 def _make_readout_mixer(kind: str, in_dim: int, out_dim: int) -> tnn.Module:
+    """
+    Factory for readout mixers. Supports 'mlp' (default), 'kan', 'kaf', 'libra'.
+    We keep it simple: a fully-connected mapping on flattened hidden readout features.
+    """
     k = (kind or "mlp").lower()
     if k in ("libra", "librakan"):
         return GeneralLibraKAN(in_dim=in_dim, out_dim=out_dim)
     elif k == "kan":
+        # You uploaded kan.py; assume it exposes class KANBlock(in_dim, out_dim) or similar.
+        # Provide a robust fallback to a tiny 2-layer MLP if import fails.
         try:
             from mixers.kan import KANReadout
             return KANReadout(in_dim, out_dim)
@@ -123,38 +98,43 @@ def _env_bool(flag: str, default: bool = False) -> bool:
     return v.lower() in ("1", "true", "yes", "on")
 
 
-READOUT_MIXER_KIND = (_env("READOUT_MIXER", "mlp") or "mlp").lower()
+READOUT_MIXER_KIND = (_env("READOUT_MIXER", "mlp") or "mlp").lower()  # mlp|kan|kaf|libra
 EDGE_LIBRA = _env_bool("EDGE_LIBRAKAN", False)
 NODE_LIBRA = _env_bool("NODE_LIBRAKAN", False)
 
 
-def _maybe_replace_edge_mlp(old_mlp: tnn.Module, in_dim: int, out_dim: int, *,
-                             edge_mlp_factory: Optional[Callable[..., tnn.Module]] = None) -> tnn.Module:
-    if edge_mlp_factory is not None:
-        return edge_mlp_factory(in_features=in_dim, out_features=out_dim)
+def _maybe_replace_edge_mlp(old_mlp: tnn.Module, in_dim: int, out_dim: int) -> tnn.Module:
+    """
+    Replace edge-side tiny MLPs (e.g., conv_tp_weights) with EdgeLibraKAN if EDGE_LIBRA is set.
+    """
     if EDGE_LIBRA:
-        return EdgePhysicsSpectralMixer(in_dim=in_dim, out_dim=out_dim)
+        return EdgeLibraKAN(in_dim=in_dim, out_dim=out_dim)
     return old_mlp
 
 
-def _maybe_replace_node_mlp(old_mlp: tnn.Module, in_dim: int, out_dim: int, *,
-                             node_mlp_factory: Optional[Callable[..., tnn.Module]] = None) -> tnn.Module:
-    if node_mlp_factory is not None:
-        return node_mlp_factory(in_features=in_dim, out_features=out_dim)
+def _maybe_replace_node_mlp(old_mlp: tnn.Module, in_dim: int, out_dim: int) -> tnn.Module:
+    """
+    Replace node-side tiny MLPs (e.g., density/residual scalars) with NodeLibraKAN if NODE_LIBRA is set.
+    """
     if NODE_LIBRA:
-        return NodeScalarLibraKAN(in_dim=in_dim, out_dim=out_dim)
+        return NodeLibraKAN(in_dim=in_dim, out_dim=out_dim)
     return old_mlp
 
 
 def _infer_linear_stack_dims(m: tnn.Module) -> Tuple[int, int]:
+    """
+    Infer (in_dim, out_dim) from a stack of Linear layers.
+    """
     linears = [x for x in m.modules() if isinstance(x, tnn.Linear)]
     if len(linears) >= 1:
         return linears[0].in_features, linears[-1].out_features
+    # RadialMLP or FullyConnectedNet might not expose .in_features; we fallback to simple heuristics.
+    # The caller will pass explicit dims where possible; this function is used with care.
     return (128, 128)
 
 
 # ==============================================================================================================
-# Original blocks start here
+# Original blocks start here (unchanged in interface). We only add minimal code to inject mixers where needed.
 # ==============================================================================================================
 
 
@@ -174,7 +154,7 @@ class LinearNodeEmbeddingBlock(torch.nn.Module):
     def forward(
         self,
         node_attrs: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor:  # [n_nodes, irreps]
         return self.linear(node_attrs)
 
 
@@ -185,7 +165,7 @@ class LinearReadoutBlock(torch.nn.Module):
         irreps_in: o3.Irreps,
         irrep_out: o3.Irreps = o3.Irreps("0e"),
         cueq_config: Optional[CuEquivarianceConfig] = None,
-        oeq_config: Optional[OEQConfig] = None,
+        oeq_config: Optional[OEQConfig] = None,  # pylint: disable=unused-argument
     ):
         super().__init__()
         self.linear = Linear(
@@ -195,28 +175,29 @@ class LinearReadoutBlock(torch.nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        heads: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        return self.linear(x)
+        heads: Optional[torch.Tensor] = None,  # pylint: disable=unused-argument
+    ) -> torch.Tensor:  # [n_nodes, irreps]  # [..., ]
+        return self.linear(x)  # [n_nodes, 1]
 
 
 @simplify_if_compile
 @compile_mode("script")
 class NonLinearReadoutBlock(torch.nn.Module):
+    """
+    Original: Linear -> Activation -> Linear
+    Patch: if READOUT_MIXER_KIND in {kan,kaf,libra}, insert a flattened mixer between
+           the activation and the final Linear. This only changes scalar readout MLP.
+    """
     def __init__(
-            self,
-            irreps_in: o3.Irreps,
-            MLP_irreps: o3.Irreps,
-            gate: Optional[Callable],
-            irrep_out: o3.Irreps = o3.Irreps("0e"),
-            num_heads: int = 1,
-            cueq_config: Optional[CuEquivarianceConfig] = None,
-            oeq_config: Optional[OEQConfig] = None,
-            readout_mixer_kind: Optional[str] = None,
-            readout_mixer_factory: Optional[Callable[[int, int], tnn.Module]] = None,
-            **kwargs,
+        self,
+        irreps_in: o3.Irreps,
+        MLP_irreps: o3.Irreps,
+        gate: Optional[Callable],
+        irrep_out: o3.Irreps = o3.Irreps("0e"),
+        num_heads: int = 1,
+        cueq_config: Optional[CuEquivarianceConfig] = None,
+        oeq_config: Optional[OEQConfig] = None,  # pylint: disable=unused-argument
     ):
-
         super().__init__()
         self.hidden_irreps = MLP_irreps
         self.num_heads = num_heads
@@ -228,74 +209,45 @@ class NonLinearReadoutBlock(torch.nn.Module):
             irreps_in=self.hidden_irreps, irreps_out=irrep_out, cueq_config=cueq_config
         )
 
-        kind = (readout_mixer_kind or READOUT_MIXER_KIND).lower()
-        self._readout_mixer_kind = kind
-        self.readout_mixer_kind = kind
-        self._use_mixer = kind in ("kan", "kaf", "libra")
-
-        def _infer_kind_from_factory(factory) -> str | None:
-            inferred = getattr(factory, "__mixer_kind__", None)
-            if inferred is not None:
-                return str(inferred).lower()
-            try:
-                fname = getattr(factory, "__name__", "") or str(factory)
-            except Exception:
-                fname = str(factory)
-            lname = fname.lower()
-            if "librakan" in lname or "libra" in lname:
-                return "libra"
-            if "kaf" in lname:
-                return "kaf"
-            if "kan" in lname:
-                return "kan"
-            return None
-
+        # Mixer injection (readout)
+        self._use_mixer = READOUT_MIXER_KIND in ("kan", "kaf", "libra")
         if self._use_mixer:
-            hid_dim = self.hidden_irreps.dim
-            if readout_mixer_factory is not None:
-                self.readout_mixer = readout_mixer_factory(hid_dim, hid_dim)
-            else:
-                self.readout_mixer = _make_readout_mixer(kind, hid_dim, hid_dim)
-        elif readout_mixer_factory is not None:
-            inferred = _infer_kind_from_factory(readout_mixer_factory)
-            if inferred in ("kan", "kaf", "libra"):
-                hid_dim = self.hidden_irreps.dim
-                self.readout_mixer = readout_mixer_factory(hid_dim, hid_dim)
-                self._use_mixer = True
-                self._readout_mixer_kind = inferred
-                self.readout_mixer_kind = inferred
-        print(f"[readout-init] kind={self.readout_mixer_kind}, use_mixer={self._use_mixer}, "
-              f"has_factory={readout_mixer_factory is not None}, mixer_mod={type(getattr(self, 'readout_mixer', None)).__name__}",
-              flush=True)
-
+            hid_dim = self.hidden_irreps.dim  # total scalar+vector dims flattened
+            self.readout_mixer = _make_readout_mixer(READOUT_MIXER_KIND, hid_dim, hid_dim)
 
     def forward(
         self, x: torch.Tensor, heads: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    ) -> torch.Tensor:  # [n_nodes, irreps]  # [..., ]
         x = self.non_linearity(self.linear_1(x))
         if self._use_mixer:
+            # Flatten last dim to [N, H] for the readout mixer
             n = x.shape[0]
             x = x.reshape(n, -1)
             x = self.readout_mixer(x)
-        if self.num_heads > 1 and heads is not None:
-            x = mask_head(x, heads, self.num_heads)
-        return self.linear_2(x)
+            # Restore shape expected by e3nn Linear (flattened scalar field is fine)
+            # Here we keep it as [N, H] which Linear from wrapper accepts.
+        if hasattr(self, "num_heads"):
+            if self.num_heads > 1 and heads is not None:
+                x = mask_head(x, heads, self.num_heads)
+        return self.linear_2(x)  # [n_nodes, len(heads)]
 
 
 @simplify_if_compile
 @compile_mode("script")
 class NonLinearBiasReadoutBlock(torch.nn.Module):
+    """
+    Original: Linear -> Act -> Linear(bias) -> Act -> Linear(bias)
+    Patch: optional flattened mixer between the mid nonlinearity and final Linear.
+    """
     def __init__(
         self,
         irreps_in: o3.Irreps,
         MLP_irreps: o3.Irreps,
-        gate: Callable,
+        gate: Optional[Callable],
         irrep_out: o3.Irreps = o3.Irreps("0e"),
         num_heads: int = 1,
         cueq_config: Optional[CuEquivarianceConfig] = None,
-        oeq_config: Optional[OEQConfig] = None,
-        readout_mixer_kind: Optional[str] = None,
-        readout_mixer_factory: Optional[Callable[[int, int], tnn.Module]] = None,
+        oeq_config: Optional[OEQConfig] = None,  # pylint: disable=unused-argument
     ):
         super().__init__()
         self.hidden_irreps = MLP_irreps
@@ -311,28 +263,25 @@ class NonLinearBiasReadoutBlock(torch.nn.Module):
             irreps_in=self.hidden_irreps, irreps_out=irrep_out, biases=True
         )
 
-        kind = (readout_mixer_kind or READOUT_MIXER_KIND).lower()
-        self._readout_mixer_kind = kind
-        self._use_mixer = kind in ("kan", "kaf", "libra")
+        # Mixer injection (readout)
+        self._use_mixer = READOUT_MIXER_KIND in ("kan", "kaf", "libra")
         if self._use_mixer:
             hid_dim = self.hidden_irreps.dim
-            if readout_mixer_factory is not None:
-                self.readout_mixer = readout_mixer_factory(hid_dim, hid_dim)
-            else:
-                self.readout_mixer = _make_readout_mixer(kind, hid_dim, hid_dim)
+            self.readout_mixer = _make_readout_mixer(READOUT_MIXER_KIND, hid_dim, hid_dim)
 
     def forward(
         self, x: torch.Tensor, heads: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    ) -> torch.Tensor:  # [n_nodes, irreps]  # [..., ]
         x = self.non_linearity(self.linear_1(x))
         x = self.non_linearity(self.linear_mid(x))
         if self._use_mixer:
             n = x.shape[0]
             x = x.reshape(n, -1)
             x = self.readout_mixer(x)
-        if self.num_heads > 1 and heads is not None:
-            x = mask_head(x, heads, self.num_heads)
-        return self.linear_2(x)
+        if hasattr(self, "num_heads"):
+            if self.num_heads > 1 and heads is not None:
+                x = mask_head(x, heads, self.num_heads)
+        return self.linear_2(x)  # [n_nodes, len(heads)]
 
 
 @compile_mode("script")
@@ -342,7 +291,7 @@ class LinearDipoleReadoutBlock(torch.nn.Module):
         irreps_in: o3.Irreps,
         dipole_only: bool = False,
         cueq_config: Optional[CuEquivarianceConfig] = None,
-        oeq_config: Optional[OEQConfig] = None,
+        oeq_config: Optional[OEQConfig] = None,  # pylint: disable=unused-argument
     ):
         super().__init__()
         if dipole_only:
@@ -353,8 +302,8 @@ class LinearDipoleReadoutBlock(torch.nn.Module):
             irreps_in=irreps_in, irreps_out=self.irreps_out, cueq_config=cueq_config
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.linear(x)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [n_nodes, irreps]  # [..., ]
+        return self.linear(x)  # [n_nodes, 1]
 
 
 @compile_mode("script")
@@ -366,7 +315,7 @@ class NonLinearDipoleReadoutBlock(torch.nn.Module):
         gate: Callable,
         dipole_only: bool = False,
         cueq_config: Optional[CuEquivarianceConfig] = None,
-        oeq_config: Optional[OEQConfig] = None,
+        oeq_config: Optional[OEQConfig] = None,  # pylint: disable=unused-argument
     ):
         super().__init__()
         self.hidden_irreps = MLP_irreps
@@ -398,9 +347,9 @@ class NonLinearDipoleReadoutBlock(torch.nn.Module):
             cueq_config=cueq_config,
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [n_nodes, irreps]  # [..., ]
         x = self.equivariant_nonlin(self.linear_1(x))
-        return self.linear_2(x)
+        return self.linear_2(x)  # [n_nodes, 1]
 
 
 @compile_mode("script")
@@ -410,7 +359,7 @@ class LinearDipolePolarReadoutBlock(torch.nn.Module):
         irreps_in: o3.Irreps,
         use_polarizability: bool = True,
         cueq_config: Optional[CuEquivarianceConfig] = None,
-        oeq_config: Optional[OEQConfig] = None,
+        oeq_config: Optional[OEQConfig] = None,  # pylint: disable=unused-argument
     ):
         super().__init__()
         if use_polarizability:
@@ -419,15 +368,17 @@ class LinearDipolePolarReadoutBlock(torch.nn.Module):
         else:
             raise ValueError(
                 "Invalid configuration for LinearDipolePolarReadoutBlock: "
-                "use_polarizability must be True. If you only need dipole, use AtomicDipolesMACE."
+                "use_polarizability must be either True."
+                "If you want to calculate only the dipole, use AtomicDipolesMACE."
             )
 
         self.linear = Linear(
             irreps_in=irreps_in, irreps_out=self.irreps_out, cueq_config=cueq_config
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.linear(x)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [n_nodes, irreps]  # [..., ]
+        y = self.linear(x)  # [n_nodes, 1]
+        return y  # [n_nodes, 1]
 
 
 @compile_mode("script")
@@ -439,7 +390,7 @@ class NonLinearDipolePolarReadoutBlock(torch.nn.Module):
         gate: Callable,
         use_polarizability: bool = True,
         cueq_config: Optional[CuEquivarianceConfig] = None,
-        oeq_config: Optional[OEQConfig] = None,
+        oeq_config: Optional[OEQConfig] = None,  # pylint: disable=unused-argument
     ):
         super().__init__()
         self.hidden_irreps = MLP_irreps
@@ -449,7 +400,8 @@ class NonLinearDipolePolarReadoutBlock(torch.nn.Module):
         else:
             raise ValueError(
                 "Invalid configuration for NonLinearDipolePolarReadoutBlock: "
-                "use_polarizability must be True. If you only need dipole, use AtomicDipolesMACE."
+                "use_polarizability must be either True."
+                "If you want to calculate only the dipole, use AtomicDipolesMACE."
             )
         irreps_scalars = o3.Irreps(
             [(mul, ir) for mul, ir in MLP_irreps if ir.l == 0 and ir in self.irreps_out]
@@ -475,9 +427,9 @@ class NonLinearDipolePolarReadoutBlock(torch.nn.Module):
             cueq_config=cueq_config,
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [n_nodes, irreps]  # [..., ]
         x = self.equivariant_nonlin(self.linear_1(x))
-        return self.linear_2(x)
+        return self.linear_2(x)  # [n_nodes, 1]
 
 
 @compile_mode("script")
@@ -486,6 +438,8 @@ class AtomicEnergiesBlock(torch.nn.Module):
 
     def __init__(self, atomic_energies: Union[np.ndarray, torch.Tensor]):
         super().__init__()
+        # assert len(atomic_energies.shape) == 1
+
         self.register_buffer(
             "atomic_energies",
             torch.tensor(atomic_energies, dtype=torch.get_default_dtype()),
@@ -493,7 +447,7 @@ class AtomicEnergiesBlock(torch.nn.Module):
 
     def forward(
         self, x: torch.Tensor  # one-hot of elements [..., n_elements]
-    ) -> torch.Tensor:
+    ) -> torch.Tensor:  # [..., ]
         return torch.matmul(x, torch.atleast_2d(self.atomic_energies).T)
 
     def __repr__(self):
@@ -580,6 +534,7 @@ class EquivariantProductBasisBlock(torch.nn.Module):
             cueq_config=cueq_config,
             oeq_config=oeq_config,
         )
+        # Update linear
         self.linear = Linear(
             target_irreps,
             target_irreps,
@@ -642,10 +597,6 @@ class InteractionBlock(torch.nn.Module):
         radial_MLP: Optional[List[int]] = None,
         cueq_config: Optional[CuEquivarianceConfig] = None,
         oeq_config: Optional[OEQConfig] = None,
-        node_mlp_factory: Optional[Callable[..., tnn.Module]] = None,
-        edge_mlp_factory: Optional[Callable[..., tnn.Module]] = None,
-        # === PAN Pooling Config ===
-        use_pan: bool = False,
     ) -> None:
         super().__init__()
         self.node_attrs_irreps = node_attrs_irreps
@@ -667,13 +618,6 @@ class InteractionBlock(torch.nn.Module):
             self.conv_fusion = self.oeq_config.conv_fusion
         if self.cueq_config and self.cueq_config.conv_fusion:
             self.conv_fusion = self.cueq_config.conv_fusion
-
-        self._node_mlp_factory = node_mlp_factory
-        self._edge_mlp_factory = edge_mlp_factory
-        
-        # === Store PAN Config ===
-        self.use_pan = use_pan
-
         self._setup()
 
     @abstractmethod
@@ -686,7 +630,7 @@ class InteractionBlock(torch.nn.Module):
         lammps_class: Optional[Any],
         lammps_natoms: Tuple[int, int],
         first_layer: bool,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor:  # noqa: D401 – internal helper
         if lammps_class is None or first_layer or torch.jit.is_scripting():
             return node_feats
         _, n_total = lammps_natoms
@@ -702,6 +646,7 @@ class InteractionBlock(torch.nn.Module):
     def truncate_ghosts(
         self, tensor: torch.Tensor, n_real: Optional[int] = None
     ) -> torch.Tensor:
+        """Truncate the tensor to only keep the real atoms in case of presence of ghost atoms during multi-GPU MD simulations."""
         return tensor[:n_real] if n_real is not None else tensor
 
     @abstractmethod
@@ -752,16 +697,13 @@ class RealAgnosticInteractionBlock(InteractionBlock):
             oeq_config=self.oeq_config,
         )
 
-        # Convolution weights
+        # Convolution weights (edge MLP -> maybe Libra)
         input_dim = self.edge_feats_irreps.num_irreps
         base_edge_mlp = nn.FullyConnectedNet(
             [input_dim] + self.radial_MLP + [self.conv_tp.weight_numel],
             torch.nn.functional.silu,
         )
-        self.conv_tp_weights = _maybe_replace_edge_mlp(
-            base_edge_mlp, input_dim, self.conv_tp.weight_numel,
-            edge_mlp_factory=self._edge_mlp_factory
-        )
+        self.conv_tp_weights = _maybe_replace_edge_mlp(base_edge_mlp, input_dim, self.conv_tp.weight_numel)
 
         # Linear
         self.irreps_out = self.target_irreps
@@ -782,22 +724,6 @@ class RealAgnosticInteractionBlock(InteractionBlock):
         )
         self.reshape = reshape_irreps(self.irreps_out, cueq_config=self.cueq_config)
 
-        # === PAN Pooling Initialization ===
-        if self.use_pan:
-            # Init PAN MLP
-            # Input dim matches radial features dim
-            self.pan_module = PANPooling(edge_feat_dim=self.edge_feats_irreps.num_irreps)
-            
-            # Create a scalar mask: 1 for l=0 scalars, 0 for l>0
-            # irreps_mid is the output of tensor product (the messages)
-            mask_list = []
-            for mul, ir in irreps_mid:
-                if ir.l == 0:
-                    mask_list.extend([1.0] * mul)
-                else:
-                    mask_list.extend([0.0] * mul)
-            self.register_buffer("pan_scalar_mask", torch.tensor(mask_list).view(1, -1))
-
     def forward(
         self,
         node_attrs: torch.Tensor,
@@ -805,7 +731,6 @@ class RealAgnosticInteractionBlock(InteractionBlock):
         edge_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        edge_lengths: Optional[torch.Tensor] = None,
         cutoff: Optional[torch.Tensor] = None,
         lammps_natoms: Tuple[int, int] = (0, 0),
         lammps_class: Optional[Any] = None,
@@ -819,37 +744,28 @@ class RealAgnosticInteractionBlock(InteractionBlock):
             lammps_natoms=lammps_natoms,
             first_layer=first_layer,
         )
-        
-        edge_geom = _build_edge_geom(edge_feats, edge_attrs, edge_index, edge_lengths = edge_lengths)
-        tp_weights = _call_edge_mlp(self.conv_tp_weights, edge_feats, edge_geom=edge_geom)
+        tp_weights = self.conv_tp_weights(edge_feats)
         if cutoff is not None:
             tp_weights = tp_weights * cutoff
 
+        message = None
         if hasattr(self, "conv_fusion"):
-            # Note: conv_fusion might bypass explicit message weighting. 
             message = self.conv_tp(node_feats, edge_attrs, tp_weights, edge_index)
         else:
-            # 1. Compute raw messages m_ji
             mji = self.conv_tp(
                 node_feats[edge_index[0]], edge_attrs, tp_weights
-            )
-            
-            # 2. Apply PAN Pooling if enabled (Weighted Sum Aggregation)
-            if self.use_pan and edge_lengths is not None:
-                pan_weights = self.pan_module(edge_feats, edge_lengths) # [n_edges, 1]
-                weight_factor = pan_weights * self.pan_scalar_mask + (1.0 - self.pan_scalar_mask)
-                mji = mji * weight_factor
-
-            # 3. Aggregate
+            )  # [n_nodes, irreps]
             message = scatter_sum(
                 src=mji, index=edge_index[1], dim=0, dim_size=node_feats.shape[0]
             )
-            
         message = self.truncate_ghosts(message, n_real)
         node_attrs = self.truncate_ghosts(node_attrs, n_real)
         message = self.linear(message) / self.avg_num_neighbors
         message = self.skip_tp(message, node_attrs)
-        return self.reshape(message), None
+        return (
+            self.reshape(message),
+            None,
+        )  # [n_nodes, channels, (lmax + 1)**2]
 
 
 @compile_mode("script")
@@ -885,16 +801,13 @@ class RealAgnosticResidualInteractionBlock(InteractionBlock):
             oeq_config=self.oeq_config,
         )
 
-        # Convolution weights
+        # Convolution weights (edge MLP -> maybe Libra)
         input_dim = self.edge_feats_irreps.num_irreps
         base_edge_mlp = nn.FullyConnectedNet(
             [input_dim] + self.radial_MLP + [self.conv_tp.weight_numel],
             torch.nn.functional.silu,  # gate
         )
-        self.conv_tp_weights = _maybe_replace_edge_mlp(
-            base_edge_mlp, input_dim, self.conv_tp.weight_numel,
-            edge_mlp_factory=self._edge_mlp_factory
-        )
+        self.conv_tp_weights = _maybe_replace_edge_mlp(base_edge_mlp, input_dim, self.conv_tp.weight_numel)
 
         # Linear
         self.irreps_out = self.target_irreps
@@ -915,17 +828,6 @@ class RealAgnosticResidualInteractionBlock(InteractionBlock):
         )
         self.reshape = reshape_irreps(self.irreps_out, cueq_config=self.cueq_config)
 
-        # === PAN Pooling Initialization ===
-        if self.use_pan:
-            self.pan_module = PANPooling(edge_feat_dim=self.edge_feats_irreps.num_irreps)
-            mask_list = []
-            for mul, ir in irreps_mid:
-                if ir.l == 0:
-                    mask_list.extend([1.0] * mul)
-                else:
-                    mask_list.extend([0.0] * mul)
-            self.register_buffer("pan_scalar_mask", torch.tensor(mask_list).view(1, -1))
-
     def forward(
         self,
         node_attrs: torch.Tensor,
@@ -933,7 +835,6 @@ class RealAgnosticResidualInteractionBlock(InteractionBlock):
         edge_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        edge_lengths: Optional[torch.Tensor] = None,
         cutoff: Optional[torch.Tensor] = None,
         lammps_class: Optional[Any] = None,
         lammps_natoms: Tuple[int, int] = (0, 0),
@@ -948,33 +849,27 @@ class RealAgnosticResidualInteractionBlock(InteractionBlock):
             lammps_natoms=lammps_natoms,
             first_layer=first_layer,
         )
-        
-        edge_geom = _build_edge_geom(edge_feats, edge_attrs, edge_index, edge_lengths = edge_lengths)
-        tp_weights = _call_edge_mlp(self.conv_tp_weights, edge_feats, edge_geom=edge_geom)
+        tp_weights = self.conv_tp_weights(edge_feats)
         if cutoff is not None:
             tp_weights = tp_weights * cutoff
-        
+        message = None
         if hasattr(self, "conv_fusion"):
             message = self.conv_tp(node_feats, edge_attrs, tp_weights, edge_index)
         else:
             mji = self.conv_tp(
                 node_feats[edge_index[0]], edge_attrs, tp_weights
-            )
-            # === PAN Pooling ===
-            if self.use_pan and edge_lengths is not None:
-                pan_weights = self.pan_module(edge_feats, edge_lengths)
-                weight_factor = pan_weights * self.pan_scalar_mask + (1.0 - self.pan_scalar_mask)
-                mji = mji * weight_factor
-            
+            )  # [n_nodes, irreps]
             message = scatter_sum(
                 src=mji, index=edge_index[1], dim=0, dim_size=node_feats.shape[0]
             )
-            
         message = self.truncate_ghosts(message, n_real)
         node_attrs = self.truncate_ghosts(node_attrs, n_real)
         sc = self.truncate_ghosts(sc, n_real)
         message = self.linear(message) / self.avg_num_neighbors
-        return self.reshape(message), sc
+        return (
+            self.reshape(message),
+            sc,
+        )  # [n_nodes, channels, (lmax + 1)**2]
 
 
 @compile_mode("script")
@@ -1010,16 +905,13 @@ class RealAgnosticDensityInteractionBlock(InteractionBlock):
             oeq_config=self.oeq_config,
         )
 
-        # Convolution weights
+        # Convolution weights (edge MLP -> maybe Libra)
         input_dim = self.edge_feats_irreps.num_irreps
         base_edge_mlp = nn.FullyConnectedNet(
             [input_dim] + self.radial_MLP + [self.conv_tp.weight_numel],
             torch.nn.functional.silu,
         )
-        self.conv_tp_weights = _maybe_replace_edge_mlp(
-            base_edge_mlp, input_dim, self.conv_tp.weight_numel,
-            edge_mlp_factory=self._edge_mlp_factory
-        )
+        self.conv_tp_weights = _maybe_replace_edge_mlp(base_edge_mlp, input_dim, self.conv_tp.weight_numel)
 
         # Linear
         self.irreps_out = self.target_irreps
@@ -1039,28 +931,14 @@ class RealAgnosticDensityInteractionBlock(InteractionBlock):
             cueq_config=self.cueq_config,
         )
 
-        # Density normalization
+        # Density normalization (node MLP -> maybe Libra)
         base_density = nn.FullyConnectedNet(
             [input_dim] + [1], torch.nn.functional.silu,
         )
-        self.density_fn = _maybe_replace_node_mlp(
-            base_density, input_dim, 1,
-            node_mlp_factory=self._node_mlp_factory
-        )
+        self.density_fn = _maybe_replace_node_mlp(base_density, input_dim, 1)
 
         # Reshape
         self.reshape = reshape_irreps(self.irreps_out, cueq_config=self.cueq_config)
-
-        # === PAN Pooling Initialization ===
-        if self.use_pan:
-            self.pan_module = PANPooling(edge_feat_dim=self.edge_feats_irreps.num_irreps)
-            mask_list = []
-            for mul, ir in irreps_mid:
-                if ir.l == 0:
-                    mask_list.extend([1.0] * mul)
-                else:
-                    mask_list.extend([0.0] * mul)
-            self.register_buffer("pan_scalar_mask", torch.tensor(mask_list).view(1, -1))
 
     def forward(
         self,
@@ -1069,7 +947,6 @@ class RealAgnosticDensityInteractionBlock(InteractionBlock):
         edge_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        edge_lengths: Optional[torch.Tensor] = None,
         cutoff: Optional[torch.Tensor] = None,
         lammps_class: Optional[Any] = None,
         lammps_natoms: Tuple[int, int] = (0, 0),
@@ -1085,29 +962,21 @@ class RealAgnosticDensityInteractionBlock(InteractionBlock):
             lammps_natoms=lammps_natoms,
             first_layer=first_layer,
         )
-        
-        edge_geom = _build_edge_geom(edge_feats, edge_attrs, edge_index, edge_lengths = edge_lengths)
-        tp_weights = _call_edge_mlp(self.conv_tp_weights, edge_feats, edge_geom=edge_geom)
+        tp_weights = self.conv_tp_weights(edge_feats)
         edge_density = torch.tanh(self.density_fn(edge_feats) ** 2)
         if cutoff is not None:
             tp_weights = tp_weights * cutoff
             edge_density = edge_density * cutoff
         density = scatter_sum(
             src=edge_density, index=receiver, dim=0, dim_size=num_nodes
-        )
-        
+        )  # [n_nodes, 1]
+        message = None
         if hasattr(self, "conv_fusion"):
             message = self.conv_tp(node_feats, edge_attrs, tp_weights, edge_index)
         else:
             mji = self.conv_tp(
                 node_feats[edge_index[0]], edge_attrs, tp_weights
-            )
-            # === PAN Pooling ===
-            if self.use_pan and edge_lengths is not None:
-                pan_weights = self.pan_module(edge_feats, edge_lengths)
-                weight_factor = pan_weights * self.pan_scalar_mask + (1.0 - self.pan_scalar_mask)
-                mji = mji * weight_factor
-
+            )  # [n_nodes, irreps]
             message = scatter_sum(
                 src=mji, index=edge_index[1], dim=0, dim_size=node_feats.shape[0]
             )
@@ -1117,7 +986,10 @@ class RealAgnosticDensityInteractionBlock(InteractionBlock):
         density = self.truncate_ghosts(density, n_real)
         message = self.linear(message) / (density + 1)
         message = self.skip_tp(message, node_attrs)
-        return self.reshape(message), None
+        return (
+            self.reshape(message),
+            None,
+        )  # [n_nodes, channels, (lmax + 1)**2]
 
 
 @compile_mode("script")
@@ -1153,16 +1025,13 @@ class RealAgnosticDensityResidualInteractionBlock(InteractionBlock):
             oeq_config=self.oeq_config,
         )
 
-        # Convolution weights
+        # Convolution weights (edge MLP -> maybe Libra)
         input_dim = self.edge_feats_irreps.num_irreps
         base_edge_mlp = nn.FullyConnectedNet(
             [input_dim] + self.radial_MLP + [self.conv_tp.weight_numel],
             torch.nn.functional.silu,  # gate
         )
-        self.conv_tp_weights = _maybe_replace_edge_mlp(
-            base_edge_mlp, input_dim, self.conv_tp.weight_numel,
-            edge_mlp_factory=self._edge_mlp_factory
-        )
+        self.conv_tp_weights = _maybe_replace_edge_mlp(base_edge_mlp, input_dim, self.conv_tp.weight_numel)
 
         # Linear
         self.irreps_out = self.target_irreps
@@ -1182,28 +1051,14 @@ class RealAgnosticDensityResidualInteractionBlock(InteractionBlock):
             cueq_config=self.cueq_config,
         )
 
-        # Density normalization
+        # Density normalization (node MLP -> maybe Libra)
         base_density = nn.FullyConnectedNet(
             [input_dim] + [1], torch.nn.functional.silu,
         )
-        self.density_fn = _maybe_replace_node_mlp(
-            base_density, input_dim, 1,
-            node_mlp_factory=self._node_mlp_factory
-        )
+        self.density_fn = _maybe_replace_node_mlp(base_density, input_dim, 1)
 
         # Reshape
         self.reshape = reshape_irreps(self.irreps_out, cueq_config=self.cueq_config)
-
-        # === PAN Pooling Initialization ===
-        if self.use_pan:
-            self.pan_module = PANPooling(edge_feat_dim=self.edge_feats_irreps.num_irreps)
-            mask_list = []
-            for mul, ir in irreps_mid:
-                if ir.l == 0:
-                    mask_list.extend([1.0] * mul)
-                else:
-                    mask_list.extend([0.0] * mul)
-            self.register_buffer("pan_scalar_mask", torch.tensor(mask_list).view(1, -1))
 
     def forward(
         self,
@@ -1212,7 +1067,6 @@ class RealAgnosticDensityResidualInteractionBlock(InteractionBlock):
         edge_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        edge_lengths: Optional[torch.Tensor] = None,
         cutoff: Optional[torch.Tensor] = None,
         lammps_class: Optional[Any] = None,
         lammps_natoms: Tuple[int, int] = (0, 0),
@@ -1229,29 +1083,22 @@ class RealAgnosticDensityResidualInteractionBlock(InteractionBlock):
             lammps_natoms=lammps_natoms,
             first_layer=first_layer,
         )
-        
-        edge_geom = _build_edge_geom(edge_feats, edge_attrs, edge_index, edge_lengths=edge_lengths)
-        tp_weights = _call_edge_mlp(self.conv_tp_weights, edge_feats, edge_geom=edge_geom)
+        tp_weights = self.conv_tp_weights(edge_feats)
         edge_density = torch.tanh(self.density_fn(edge_feats) ** 2)
         if cutoff is not None:
             tp_weights = tp_weights * cutoff
             edge_density = edge_density * cutoff
         density = scatter_sum(
             src=edge_density, index=receiver, dim=0, dim_size=num_nodes
-        )
+        )  # [n_nodes, 1]
 
+        message = None
         if hasattr(self, "conv_fusion"):
             message = self.conv_tp(node_feats, edge_attrs, tp_weights, edge_index)
         else:
             mji = self.conv_tp(
                 node_feats[edge_index[0]], edge_attrs, tp_weights
-            )
-            # === PAN Pooling ===
-            if self.use_pan and edge_lengths is not None:
-                pan_weights = self.pan_module(edge_feats, edge_lengths)
-                weight_factor = pan_weights * self.pan_scalar_mask + (1.0 - self.pan_scalar_mask)
-                mji = mji * weight_factor
-
+            )  # [n_nodes, irreps]
             message = scatter_sum(
                 src=mji, index=edge_index[1], dim=0, dim_size=num_nodes
             )
@@ -1261,7 +1108,10 @@ class RealAgnosticDensityResidualInteractionBlock(InteractionBlock):
         density = self.truncate_ghosts(density, n_real)
         sc = self.truncate_ghosts(sc, n_real)
         message = self.linear(message) / (density + 1)
-        return self.reshape(message), sc
+        return (
+            self.reshape(message),
+            sc,
+        )  # [n_nodes, channels, (lmax + 1)**2]
 
 
 @compile_mode("script")
@@ -1298,7 +1148,7 @@ class RealAgnosticAttResidualInteractionBlock(InteractionBlock):
             oeq_config=self.oeq_config,
         )
 
-        # Convolution weights with augmented features
+        # Convolution weights (edge MLP -> maybe Libra) with augmented features
         self.linear_down = Linear(
             self.node_feats_irreps,
             self.node_feats_down_irreps,
@@ -1314,10 +1164,7 @@ class RealAgnosticAttResidualInteractionBlock(InteractionBlock):
             [input_dim] + 3 * [256] + [self.conv_tp.weight_numel],
             torch.nn.functional.silu,
         )
-        self.conv_tp_weights = _maybe_replace_edge_mlp(
-            base_edge_mlp, input_dim, self.conv_tp.weight_numel,
-            edge_mlp_factory=self._edge_mlp_factory
-        )
+        self.conv_tp_weights = _maybe_replace_edge_mlp(base_edge_mlp, input_dim, self.conv_tp.weight_numel)
 
         # Linear
         self.irreps_out = self.target_irreps
@@ -1336,17 +1183,7 @@ class RealAgnosticAttResidualInteractionBlock(InteractionBlock):
             self.node_feats_irreps, self.hidden_irreps, cueq_config=self.cueq_config
         )
 
-        # === PAN Pooling Initialization ===
-        if self.use_pan:
-            self.pan_module = PANPooling(edge_feat_dim=self.edge_feats_irreps.num_irreps)
-            mask_list = []
-            for mul, ir in irreps_mid:
-                if ir.l == 0:
-                    mask_list.extend([1.0] * mul)
-                else:
-                    mask_list.extend([0.0] * mul)
-            self.register_buffer("pan_scalar_mask", torch.tensor(mask_list).view(1, -1))
-
+    # pylint: disable=unused-argument
     def forward(
         self,
         node_attrs: torch.Tensor,
@@ -1354,7 +1191,6 @@ class RealAgnosticAttResidualInteractionBlock(InteractionBlock):
         edge_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        edge_lengths: Optional[torch.Tensor] = None,
         cutoff: Optional[torch.Tensor] = None,
         lammps_class: Optional[Any] = None,
         lammps_natoms: Tuple[int, int] = (0, 0),
@@ -1373,30 +1209,24 @@ class RealAgnosticAttResidualInteractionBlock(InteractionBlock):
             ],
             dim=-1,
         )
-        
-        edge_geom = _build_edge_geom(edge_feats, edge_attrs, edge_index, edge_lengths = edge_lengths)
-        tp_weights = _call_edge_mlp(self.conv_tp_weights, augmented_edge_feats, edge_geom=edge_geom)
+        tp_weights = self.conv_tp_weights(augmented_edge_feats)
         if cutoff is not None:
             tp_weights = tp_weights * cutoff
-        
+        message = None
         if hasattr(self, "conv_fusion"):
             message = self.conv_tp(node_feats_up, edge_attrs, tp_weights, edge_index)
         else:
             mji = self.conv_tp(
                 node_feats_up[edge_index[0]], edge_attrs, tp_weights
-            )
-            # === PAN Pooling ===
-            if self.use_pan and edge_lengths is not None:
-                pan_weights = self.pan_module(edge_feats, edge_lengths)
-                weight_factor = pan_weights * self.pan_scalar_mask + (1.0 - self.pan_scalar_mask)
-                mji = mji * weight_factor
-
+            )  # [n_nodes, irreps]
             message = scatter_sum(
                 src=mji, index=edge_index[1], dim=0, dim_size=node_feats.shape[0]
             )
-            
         message = self.linear(message) / self.avg_num_neighbors
-        return self.reshape(message), sc
+        return (
+            self.reshape(message),
+            sc,
+        )  # [n_nodes, channels, (lmax + 1)**2]
 
 
 @compile_mode("script")
@@ -1448,16 +1278,13 @@ class RealAgnosticResidualNonLinearInteractionBlock(InteractionBlock):
             cueq_config=self.cueq_config,
         )
 
-        # Convolution weights
+        # Convolution weights (edge MLP -> maybe Libra) with augmented features
         input_dim = self.edge_feats_irreps.num_irreps
         self._aug_dim = input_dim + 2 * node_scalar_irreps.dim
         base_edge_mlp = RadialMLP(
             [self._aug_dim] + self.radial_MLP + [self.conv_tp.weight_numel]
         )
-        self.conv_tp_weights = _maybe_replace_edge_mlp(
-            base_edge_mlp, self._aug_dim, self.conv_tp.weight_numel,
-            edge_mlp_factory=self._edge_mlp_factory
-        )
+        self.conv_tp_weights = _maybe_replace_edge_mlp(base_edge_mlp, self._aug_dim, self.conv_tp.weight_numel)
         self.irreps_out = self.target_irreps
 
         # Selector TensorProduct
@@ -1510,14 +1337,11 @@ class RealAgnosticResidualNonLinearInteractionBlock(InteractionBlock):
             cueq_config=self.cueq_config,
         )
 
-        # Normalizations
+        # Normalizations (node MLP -> maybe Libra)
         base_density = RadialMLP(
             [self._aug_dim] + [64] + [1],
         )
-        self.density_fn = _maybe_replace_node_mlp(
-            base_density, self._aug_dim, 1,
-            node_mlp_factory=self._node_mlp_factory
-        )
+        self.density_fn = _maybe_replace_node_mlp(base_density, self._aug_dim, 1)
         self.alpha = torch.nn.Parameter(torch.tensor(20.0), requires_grad=True)
         self.beta = torch.nn.Parameter(torch.tensor(0.0), requires_grad=True)
 
@@ -1534,17 +1358,6 @@ class RealAgnosticResidualNonLinearInteractionBlock(InteractionBlock):
             cueq_config=self.cueq_config,
         )
 
-        # === PAN Pooling Initialization ===
-        if self.use_pan:
-            self.pan_module = PANPooling(edge_feat_dim=self.edge_feats_irreps.num_irreps)
-            mask_list = []
-            for mul, ir in irreps_mid:
-                if ir.l == 0:
-                    mask_list.extend([1.0] * mul)
-                else:
-                    mask_list.extend([0.0] * mul)
-            self.register_buffer("pan_scalar_mask", torch.tensor(mask_list).view(1, -1))
-
     def forward(
         self,
         node_attrs: torch.Tensor,
@@ -1552,7 +1365,6 @@ class RealAgnosticResidualNonLinearInteractionBlock(InteractionBlock):
         edge_attrs: torch.Tensor,
         edge_feats: torch.Tensor,
         edge_index: torch.Tensor,
-        edge_lengths: Optional[torch.Tensor] = None,
         cutoff: Optional[torch.Tensor] = None,
         lammps_class: Optional[Any] = None,
         lammps_natoms: Tuple[int, int] = (0, 0),
@@ -1580,9 +1392,8 @@ class RealAgnosticResidualNonLinearInteractionBlock(InteractionBlock):
             ],
             dim=-1,
         )
-        
-        edge_geom = _build_edge_geom(edge_feats, edge_attrs, edge_index, edge_lengths = edge_lengths)
-        tp_weights = _call_edge_mlp(self.conv_tp_weights, edge_feats, edge_geom=edge_geom)
+        tp_weights = self.conv_tp_weights(edge_feats)
+
         edge_density = torch.tanh(self.density_fn(edge_feats) ** 2)
         if cutoff is not None:
             tp_weights = tp_weights * cutoff
@@ -1596,19 +1407,10 @@ class RealAgnosticResidualNonLinearInteractionBlock(InteractionBlock):
         else:
             mji = self.conv_tp(
                 node_feats[edge_index[0]], edge_attrs, tp_weights
-            )
-            # === PAN Pooling ===
-            if self.use_pan and edge_lengths is not None:
-                # Note: for this block, edge_feats is augmented, but we usually 
-                # only use the radial part for PAN weights or project the augmented features.
-                # Here we use the full augmented features as input to PAN for max expressivity.
-                pan_weights = self.pan_module(edge_feats, edge_lengths)
-                weight_factor = pan_weights * self.pan_scalar_mask + (1.0 - self.pan_scalar_mask)
-                mji = mji * weight_factor
-
+            )  # [n_edges, irreps]
             message = scatter_sum(
                 src=mji, index=edge_index[1], dim=0, dim_size=num_nodes
-            )
+            )  # [n_nodes, irreps]
 
         message = self.truncate_ghosts(message, n_real)
         density = self.truncate_ghosts(density, n_real)
@@ -1622,7 +1424,10 @@ class RealAgnosticResidualNonLinearInteractionBlock(InteractionBlock):
         if self.transpose_ir_mul is not None:
             message = self.transpose_ir_mul(message)
         message = self.linear_2(message)
-        return self.reshape(message), sc
+        return (
+            self.reshape(message),
+            sc,
+        )
 
 
 @compile_mode("script")
@@ -1655,3 +1460,4 @@ class ScaleShiftBlock(torch.nn.Module):
             else f"{self.shift.item():.4f}"
         )
         return f"{self.__class__.__name__}(scale={formatted_scale}, shift={formatted_shift})"
+

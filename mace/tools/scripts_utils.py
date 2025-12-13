@@ -258,6 +258,11 @@ def extract_config_mace_model(model: torch.nn.Module) -> Dict[str, Any]:
         )
     except AttributeError:
         correlation = model.products[0].symmetric_contractions.contraction_degree
+    conv_tp = model.interactions[0].conv_tp_weights
+    if hasattr(conv_tp, "hs"):
+        radial_mlp = conv_tp.hs[1:-1]
+    else:
+        radial_mlp = []
     config = {
         "r_max": model.r_max.item(),
         "num_bessel": len(model.radial_embedding.bessel_fn.bessel_weights),
@@ -309,7 +314,11 @@ def extract_config_mace_model(model: torch.nn.Module) -> Dict[str, Any]:
             model.embedding_specs if hasattr(model, "embedding_specs") else None
         ),
         "apply_cutoff": model.apply_cutoff if hasattr(model, "apply_cutoff") else True,
-        "radial_MLP": model.interactions[0].conv_tp_weights.hs[1:-1],
+        #"radial_MLP": model.interactions[0].conv_tp_weights.hs[1:-1],
+        # radial_MLP configuration: old models used FullyConnectedNet with `hs` attribute.
+        # New mixers (e.g. EdgePhysicsSpectralMixer) do not expose `hs`, so we fall back
+        # to an empty list to indicate "no explicit radial MLP".
+        "radial_MLP": radial_mlp,
         "pair_repulsion": hasattr(model, "pair_repulsion_fn"),
         "distance_transform": radial_to_transform(model.radial_embedding),
         "atomic_inter_scale": scale.cpu().numpy(),

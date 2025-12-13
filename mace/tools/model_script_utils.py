@@ -17,118 +17,558 @@ from functools import partial
 # Minimal Mixer Extension
 # =========================
 
-def _str2bool(x: str) -> bool:
-    return str(x).lower() in ("1", "true", "yes", "on")
-def _site_factory_call(ctor, in_features, out_features, **fixed):
-    """Bridge MACE's (in_features, out_features) to mixer ctor(in_dim, out_dim)."""
+from functools import partial
+
+
+# ---------- helpers: bool / hidden / layers ----------
+def _site_factory_call(ctor, in_features: int, out_features: int, **fixed):
+    """
+    Bridge MACE's site-MLP factory signature to your mixer ctor.
+
+    MACE calls factories as:  factory(in_features=<int>, out_features=<int>)
+    Your mixer expects:        ctor(in_dim=<int>, out_dim=<int>, **kwargs)
+
+    This adapter converts the argument names and forwards any fixed kwargs.
+    """
     return ctor(in_dim=int(in_features), out_dim=int(out_features), **fixed)
+
+def _str2bool(x) -> bool:
+    """Robust string->bool conversion for CLI/env flags."""
+    return str(x).strip().lower() in ("1", "true", "yes", "on", "y", "t")
+
+
 def _parse_optional_hidden(x):
     """
-    Return: None | int | List[int]
-    Accepts None, int, list/tuple of ints, string forms like "1024", "1024,512", "[1024,512]".
+    Returns: None | int | list[int]
+    Accepts: None, 1024, [1024,512], (1024,512), "1024,512", " [ 1024 , 512 ] ".
+    For lists/tuples, all items must be convertible to int.
     """
     if x in (None, "", "None"):
         return None
-    # already parsed types
-    if isinstance(x, (int, np.integer)):
+    if isinstance(x, int):
         return int(x)
     if isinstance(x, (list, tuple)):
-        return [int(v) for v in x]
-    # string cases
-    if isinstance(x, str):
-        s = x.strip()
-        # bracketed Python literal list/tuple
+        out = []
+        for v in x:
+            if v in (None, "", "None"):
+                continue
+            out.append(int(v))
+        return out if out else None
+
+    s = str(x).strip()
+    if (s.startswith("[") and s.endswith("]")) or (s.startswith("(") and s.endswith(")")):
+        s = s[1:-1].strip()
+    if "," in s:
+        parts = [p.strip() for p in s.split(",") if p.strip()]
+        return [int(p) for p in parts]
+    return int(s)
+
+
+def _parse_optional_layers(x):
+    """
+    Returns: None | list[ int | 'H' | 'H2' ]
+    Accepts: None, "", [H], [H,128], (H, H2), "H,128", " [ H , 128 ] ".
+    Only 'H'/'H2' placeholders and integers are allowed.
+    """
+    if x in (None, "", "None"):
+        return None
+
+    if isinstance(x, (list, tuple)):
+        tokens = list(x)
+    else:
+        s = str(x).strip()
         if (s.startswith("[") and s.endswith("]")) or (s.startswith("(") and s.endswith(")")):
+            s = s[1:-1].strip()
+        tokens = [t.strip() for t in s.split(",")] if "," in s else [s]
+
+    out = []
+    for t in tokens:
+        if t in ("", "None"):
+            continue
+        if t in ("H", "H2"):
+            out.append(t)
+        else:
             try:
-                import ast as _ast
-                seq = _ast.literal_eval(s)
-                if isinstance(seq, (list, tuple)):
-                    return [int(v) for v in seq]
-            except Exception:
-                pass
-        # comma-separated "1024,512"
-        if "," in s:
-            parts = [p.strip() for p in s.split(",") if p.strip()]
-            return [int(p) for p in parts]
-        # single int in string
-        return int(s)
-    # fallback: try int, else raise
-    try:
-        return int(x)
-    except Exception as e:
-        raise ValueError(f"Cannot parse readout_hidden={x!r}") from e
+                out.append(int(t))
+            except Exception as e:
+                raise ValueError(f"Invalid layer token for local_layers: {t!r}") from e
+    return out if out else None
+
+
+from functools import partial
+
+
+# ---------- NEW: top-level core for scalar Libra readout (picklable) ----------
+
+def _scalar_libra_readout_core(
+
+        in_features: int,
+
+        out_features: int,
+
+        *,
+
+        hidden_irreps,
+
+        hidden,
+
+        p,
+
+        lam,
+
+        trainable_lambda,
+
+        activation,
+
+        use_layernorm,
+
+        dropout,
+
+        local_kind,
+
+        local_layers,
+
+        F,
+
+        learn_omega,
+
+        es_fmax,
+
+        spectral_scale,
+
+        omega_max,
+
+        alpha_min,
+
+        alpha_tau,
+
+        active_threshold,
+
+):
+    """
+
+    Top-level factory for ReadoutScalarLibraKAN.
+
+    IMPORTANT: This function is at module scope (not a local inner def),
+
+    so a partial(_scalar_libra_readout_core, ...) is picklable.
+
+    """
+
+    from mace.modules.mixers.librakan import ReadoutScalarLibraKAN
+
+    # We ignore in_features/out_features here, because ReadoutScalarLibraKAN
+
+    # uses hidden_irreps.dim internally to set H.
+
+    return ReadoutScalarLibraKAN(
+
+        hidden_irreps=hidden_irreps,
+
+        hidden=hidden,
+
+        p=p,
+
+        lam=lam,
+
+        trainable_lambda=trainable_lambda,
+
+        activation=activation,
+
+        local_kind=local_kind,
+
+        local_layers=local_layers,
+
+        dropout=dropout,
+
+        use_layernorm=use_layernorm,
+
+        F=F,
+
+        spectral_scale=spectral_scale,
+
+        es_fmax=es_fmax,
+
+        omega_max=omega_max,
+
+        learn_omega=learn_omega,
+
+        alpha_min=alpha_min,
+
+        alpha_tau=alpha_tau,
+
+        active_threshold=active_threshold,
+
+    )
 
 
 def _build_libra_readout_factory(args):
-    """Picklable factory for GeneralLibraKAN readout."""
-    from mace.modules.mixers.librakan import GeneralLibraKAN
+    """
+
+    Picklable factory for scalar-only LibraKAN readout mixer.
+
+    NOTE:
+
+    We must align H with the readout MLP irreps (MLP_irreps), not the
+
+    message-passing hidden irreps. Otherwise, x.shape[-1] != H and
+
+    reshape(-1, H) in ReadoutScalarLibraKAN will fail.
+
+    """
+
+    from e3nn import o3
+
     import math
 
+    # ---- use MLP_irreps for readout hidden space ----
+
+    mlp_irreps_str = getattr(args, "MLP_irreps", None)
+
+    if mlp_irreps_str in (None, "", "None"):
+
+        hidden_irreps_str = getattr(args, "hidden_irreps", None)
+
+        if hidden_irreps_str in (None, "", "None"):
+            raise ValueError(
+
+                "Libra readout requires args.MLP_irreps or args.hidden_irreps "
+
+                "to be set; please pass --MLP_irreps on the command line."
+
+            )
+
+        hidden_irreps = o3.Irreps(hidden_irreps_str)
+
+    else:
+
+        hidden_irreps = o3.Irreps(mlp_irreps_str)
+
+    # ---- shrinkage / activation / local branch ----
+
     lam = float(getattr(args, "libra_lambda_init", 1e-2))
+
     p = float(getattr(args, "libra_p", 1.0))
+
     trainable = _str2bool(getattr(args, "libra_lambda_trainable", "true"))
+
     act = str(getattr(args, "libra_base_activation", "gelu"))
 
-    # omega_max: prefer es_fmax if provided; else spectral_scale * pi
-    _es_fmax = getattr(args, "libra_es_fmax", None)
-    if _es_fmax in (None, "", "None"):
-        spec_scale = float(getattr(args, "libra_spectral_scale", 1.0))
-        omega_max = spec_scale * math.pi
-    else:
-        omega_max = float(_es_fmax)
+    use_ln = _str2bool(getattr(args, "libra_readout_use_layernorm", "false"))
 
-    # robustly parse hidden (None | int | List[int])
+    dropout = float(getattr(args, "libra_readout_dropout", 0.0))
+
+    local_kind = str(getattr(args, "libra_readout_local_kind", "mlp"))
+
+    local_layers = _parse_optional_layers(
+
+        getattr(args, "libra_readout_local_layers", "[H]")
+
+    )
+
+    # ---- spectral range ----
+
+    es_fmax_arg = getattr(args, "libra_readout_es_fmax", None)
+
+    if es_fmax_arg in (None, "", "None"):
+
+        spec_scale = float(getattr(args, "libra_readout_spectral_scale", 1.0))
+
+        omega_max = spec_scale * math.pi
+
+        es_fmax = None
+
+    else:
+
+        es_fmax = float(es_fmax_arg)
+
+        omega_max = es_fmax
+
+        spec_scale = float(getattr(args, "libra_readout_spectral_scale", 1.0))
+
+    # ---- dictionary size / learnable freqs ----
+
+    F_arg = getattr(args, "libra_readout_F", None)
+
+    F = None if F_arg in (None, "", "None") else int(F_arg)
+
+    learn_omega = _str2bool(getattr(args, "libra_readout_learn_omega", "true"))
+
+    # ---- fusion controls ----
+
+    alpha_min = float(getattr(args, "libra_readout_alpha_min", 0.0))
+
+    alpha_tau = float(getattr(args, "libra_readout_alpha_tau", 1.0))
+
+    # ---- internal hidden width for LibraKAN over scalars ----
+
     raw_hidden = getattr(args, "readout_hidden", None)
+
     hidden = _parse_optional_hidden(raw_hidden)
-    # If GeneralLibraKAN expects a single int, collapse list/tuple to first
+
     if isinstance(hidden, (list, tuple)):
         hidden = int(hidden[0]) if len(hidden) > 0 else None
 
-    # Return a top-level picklable callable. in_dim/out_dim will be provided at call-site.
-    make = partial(
-        GeneralLibraKAN,
-        hidden=hidden,
-        p=float(p),
-        lam=float(lam),
-        trainable_lambda=bool(trainable),
-        activation=act,
-        omega_max=float(omega_max),
+    active_threshold = float(
+
+        getattr(args, "libra_readout_active_threshold", 1e-3)
+
     )
-    make.__mixer_kind__ = "libra"  # tag for kind inference in blocks.py
+
+    # IMPORTANT: do NOT define an inner def make() here.
+
+    # We instead return a partial to a top-level function (_scalar_libra_readout_core),
+
+    # which is picklable.
+
+    make = partial(
+
+        _scalar_libra_readout_core,
+
+        hidden_irreps=hidden_irreps,
+
+        hidden=hidden,
+
+        p=p,
+
+        lam=lam,
+
+        trainable_lambda=trainable,
+
+        activation=act,
+
+        local_kind=local_kind,
+
+        local_layers=local_layers,
+
+        dropout=dropout,
+
+        use_layernorm=use_ln,
+
+        F=F,
+
+        spectral_scale=spec_scale,
+
+        es_fmax=es_fmax,
+
+        omega_max=omega_max,
+
+        learn_omega=learn_omega,
+
+        alpha_min=alpha_min,
+
+        alpha_tau=alpha_tau,
+
+        active_threshold=active_threshold,
+    )
+    make.__mixer_kind__ = "libra_readout_scalar"
     return make
 
-
-def _build_libra_site_factory(args):
-    """Picklable factory for node/edge GeneralLibraKAN (site MLP replacement)."""
-    from mace.modules.mixers.librakan import GeneralLibraKAN
+def _build_libra_node_factory1(args):
+    """Picklable factory for GeneralLibraKAN used to replace NODE site MLPs."""
+    from mace.modules.mixers.node_librakan import NodeLibraKAN
     import math
 
     lam = float(getattr(args, "libra_lambda_init", 1e-2))
     p = float(getattr(args, "libra_p", 1.0))
     trainable = _str2bool(getattr(args, "libra_lambda_trainable", "true"))
     act = str(getattr(args, "libra_base_activation", "gelu"))
+    use_ln = _str2bool(getattr(args, "libra_node_use_layernorm", "false"))
+    dropout = float(getattr(args, "libra_node_dropout", 0.0))
+    local_kind = str(getattr(args, "libra_node_local_kind", "act"))
+    local_layers = _parse_optional_layers(getattr(args, "libra_node_local_layers", ""))
 
-    _es_fmax = getattr(args, "libra_es_fmax", None)
-    if _es_fmax in (None, "", "None"):
-        spec_scale = float(getattr(args, "libra_spectral_scale", 1.0))
+    es_fmax_arg = getattr(args, "libra_node_es_fmax", None)
+    if es_fmax_arg in (None, "", "None"):
+        spec_scale = float(getattr(args, "libra_node_spectral_scale", 0.8))
         omega_max = spec_scale * math.pi
+        es_fmax = None
     else:
-        omega_max = float(_es_fmax)
+        es_fmax = float(es_fmax_arg)
+        omega_max = es_fmax
+
+    F_arg = getattr(args, "libra_node_F", None)
+    F = None if F_arg in (None, "", "None") else int(F_arg)
+    learn_omega = _str2bool(getattr(args, "libra_node_learn_omega", "true"))
+    alpha_min = float(getattr(args, "libra_node_alpha_min", 0.1))
+    alpha_tau = float(getattr(args, "libra_node_alpha_tau", 1.0))
+    use_cna = _str2bool(getattr(args, "libra_edge_use_cna", "true"))
 
     make = partial(
         _site_factory_call,
-        GeneralLibraKAN,
-        hidden=None,  # site MLP: keep single layer unless you add multi-layer support
-        p=float(p),
-        lam=float(lam),
-        trainable_lambda=bool(trainable),
+        NodeLibraKAN,
+        hidden=None,
+        p=p,
+        lam=lam,
+        trainable_lambda=trainable,
         activation=act,
-        omega_max=float(omega_max)*0.6,
-        F = min(32, int(getattr(args, "libra_F", 96.0))),
+        use_layernorm=use_ln,
+        dropout=dropout,
+        local_kind=local_kind,
+        local_layers=local_layers,
+        F=F,
+        learn_omega=learn_omega,
+        es_fmax=es_fmax,
+        spectral_scale=float(getattr(args, "libra_node_spectral_scale", 0.8)),
+        alpha_min=alpha_min,
+        alpha_tau=alpha_tau,
+        omega_max=omega_max,
+        use_cna=use_cna,
     )
     make.__mixer_kind__ = "libra"
     return make
 
+
+def _build_libra_node_factory(args):
+    """Picklable factory for node LibraKAN site MLPs (scalar-only optional)."""
+    import math
+    from mace.modules.mixers.node_librakan import NodeLibraKAN
+    from mace.modules.mixers.node_scalar_librakan import NodeScalarLibraKAN
+
+    lam = float(getattr(args, "libra_lambda_init", 1e-1))
+    p = float(getattr(args, "libra_p", 1.0))
+    trainable = _str2bool(getattr(args, "libra_lambda_trainable", "false"))
+    act = str(getattr(args, "libra_base_activation", "gelu"))
+    use_ln = _str2bool(getattr(args, "libra_node_use_layernorm", "false"))
+    dropout = float(getattr(args, "libra_node_dropout", 0.0))
+    local_kind = str(getattr(args, "libra_node_local_kind", "act"))
+    local_layers = _parse_optional_layers(getattr(args, "libra_node_local_layers", ""))
+
+    # spectral range
+    es_fmax_arg = getattr(args, "libra_node_es_fmax", None)
+    if es_fmax_arg in (None, "", "None"):
+        spec_scale = float(getattr(args, "libra_node_spectral_scale", 0.8))
+        omega_max = spec_scale * math.pi
+        es_fmax = None
+    else:
+        es_fmax = float(es_fmax_arg)
+        omega_max = es_fmax
+
+    F_arg = getattr(args, "libra_node_F", None)
+    F = None if F_arg in (None, "", "None") else int(F_arg)
+    learn_omega = _str2bool(getattr(args, "libra_node_learn_omega", "true"))
+    alpha_min = float(getattr(args, "libra_node_alpha_min", 0.10))
+    alpha_tau = float(getattr(args, "libra_node_alpha_tau", 1.00))
+
+    scalar_only = _str2bool(getattr(args, "libra_node_scalar_only", "false"))
+    hidden_irreps = getattr(args, "hidden_irreps", None)
+
+    if scalar_only:
+        # Use the scalar-only adapter; bridge (in_features, out_features) → ctor signature
+        make = partial(
+            _site_factory_call,
+            NodeScalarLibraKAN,
+            hidden_irreps=hidden_irreps,
+            p=p, lam=lam, trainable_lambda=trainable, activation=act,
+            F=F, spectral_scale=spec_scale, es_fmax=es_fmax,
+            alpha_min=alpha_min, alpha_tau=alpha_tau, learn_omega=learn_omega,
+            use_layernorm=use_ln, dropout=dropout,
+            local_kind=local_kind, local_layers=local_layers,
+            residual="add", beta=0.02,
+        )
+        make.__mixer_kind__ = "libra_node_scalar"
+        return make
+
+    # default: full GeneralLibraKAN on the whole node vector (square)
+    make = partial(
+        _site_factory_call,
+        NodeLibraKAN,
+        hidden=None,
+        p=p, lam=lam, trainable_lambda=trainable, activation=act,
+        F=F, spectral_scale=spec_scale, es_fmax=es_fmax,
+        alpha_min=alpha_min, alpha_tau=alpha_tau, learn_omega=learn_omega,
+        use_layernorm=use_ln, dropout=dropout,
+        local_kind=local_kind, local_layers=local_layers,
+    )
+    make.__mixer_kind__ = "libra_node"
+    return make
+
+def _build_libra_edge_factory_librakan_version(args):
+    """Picklable factory for GeneralLibraKAN used to replace EDGE site MLPs."""
+    from mace.modules.mixers.librakan import GeneralLibraKAN
+    import math
+
+    lam = float(getattr(args, "libra_lambda_init", 1e-2))
+    p = float(getattr(args, "libra_p", 1.0))
+    trainable = _str2bool(getattr(args, "libra_lambda_trainable", "true"))
+    act = str(getattr(args, "libra_base_activation", "gelu"))
+    use_ln = _str2bool(getattr(args, "libra_edge_use_layernorm", "false"))
+    dropout = float(getattr(args, "libra_edge_dropout", 0.0))
+    local_kind = str(getattr(args, "libra_edge_local_kind", "act"))
+    local_layers = _parse_optional_layers(getattr(args, "libra_edge_local_layers", ""))
+
+    es_fmax_arg = getattr(args, "libra_edge_es_fmax", None)
+    if es_fmax_arg in (None, "", "None"):
+        spec_scale = float(getattr(args, "libra_edge_spectral_scale", 0.6))
+        omega_max = spec_scale * math.pi
+        es_fmax = None
+    else:
+        es_fmax = float(es_fmax_arg)
+        omega_max = es_fmax
+
+    F_arg = getattr(args, "libra_edge_F", None)
+    F = None if F_arg in (None, "", "None") else int(F_arg)
+    learn_omega = _str2bool(getattr(args, "libra_edge_learn_omega", "true"))
+    alpha_min = float(getattr(args, "libra_edge_alpha_min", 0.05))
+    alpha_tau = float(getattr(args, "libra_edge_alpha_tau", 1.2))
+    use_cna = _str2bool(getattr(args, "libra_edge_use_cna", "true"))
+
+    make = partial(
+        _site_factory_call,
+        GeneralLibraKAN,
+        hidden=None,
+        p=p,
+        lam=lam,
+        trainable_lambda=trainable,
+        activation=act,
+        use_layernorm=use_ln,
+        dropout=dropout,
+        local_kind=local_kind,
+        local_layers=local_layers,
+        F=F,
+        learn_omega=learn_omega,
+        es_fmax=es_fmax,
+        spectral_scale=float(getattr(args, "libra_edge_spectral_scale", 0.6)),
+        alpha_min=alpha_min,
+        alpha_tau=alpha_tau,
+        omega_max=omega_max,
+        use_cna = use_cna
+    )
+    make.__mixer_kind__ = "libra"
+    return make
+
+
+def _build_libra_edge_factory(args):
+    """Picklable factory for edge PhysicsSpectralRadialMixer (reusing --edge_librakan flag)."""
+    from mace.modules.mixers.edge_physics_spectral import EdgePhysicsSpectralMixer
+
+    # Reuse global radial settings as physical prior
+    num_basis = int(getattr(args, "num_radial_basis", 8))
+    cutoff = float(getattr(args, "r_max", 5.0))
+    envelope_exponent = int(getattr(args, "num_cutoff_basis", 5))
+
+    # Light-weight residual configuration (can be overridden via CLI if desired)
+    residual_hidden = (
+        int(getattr(args, "libra_edge_hidden", 32))
+        if hasattr(args, "libra_edge_hidden")
+        else 32
+    )
+    dropout = float(getattr(args, "libra_edge_dropout", 0.0))
+    base_activation = str(getattr(args, "libra_base_activation", "gelu"))
+
+    make = partial(
+        _site_factory_call,
+        EdgePhysicsSpectralMixer,
+        num_basis=num_basis,
+        cutoff=cutoff,
+        envelope_exponent=envelope_exponent,
+        residual_hidden=residual_hidden,
+        dropout=dropout,
+        base_activation=base_activation,
+    )
+    # Tag for logging / debugging
+    make.__mixer_kind__ = "libra"
+    return make
 
 def _build_kaf_readout_factory(args):
     """
@@ -188,9 +628,9 @@ def _resolve_readout_and_mixers(args):
     # Interaction site factories (FLAT dict — this is what MACE expects)
     inter_factories: Dict[str, Any] = {}
     if getattr(args, "node_librakan", False):
-        inter_factories["node_mlp_factory"] = _build_libra_site_factory(args)
+        inter_factories["node_mlp_factory"] = _build_libra_node_factory(args)
     if getattr(args, "edge_librakan", False):
-        inter_factories["edge_mlp_factory"] = _build_libra_site_factory(args)
+        inter_factories["edge_mlp_factory"] = _build_libra_edge_factory(args)
     print(
         f"[resolver] readout_kind={ro_kind}, "
         f"node_libra={'node_mlp_factory' in inter_factories}, "

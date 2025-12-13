@@ -1,15 +1,13 @@
-# models.py
 ###########################################################################################
 # Implementation of MACE models and other models based E(3)-Equivariant MPNNs
 # Authors: Ilyes Batatia, Gregor Simm
-# Modified: MIL pooling integration via external module .mil_pooling (ConjunctivePooling)
-#           Mixer injection hooks for Libra/KAN/KAF at readout and interaction MLPs
-#           Safe kwarg filtering for custom InteractionBlocks (node/edge *_mlp_factory)
+# Modified: Integrated PAN Pooling via use_pan flag passed to blocks.
+#           Removed incorrect global MIL readout logic to align with paper Methods 4.2.
 # License: MIT (see MIT.md)
 ###########################################################################################
 
 from typing import Any, Callable, Dict, List, Optional, Type, Union, Tuple
-import inspect  # <-- added for safe ctor wrapper
+import inspect
 import numpy as np
 import torch
 from e3nn import o3
@@ -19,8 +17,12 @@ from mace.modules.embeddings import GenericJointEmbedding
 from mace.modules.radial import ZBLBasis
 from mace.tools.scatter import scatter_mean, scatter_sum
 from mace.tools.torch_tools import get_change_of_basis, spherical_to_cartesian
-# External MIL pooling implementation
-from mace.modules.mil_pooling import ConjunctivePooling
+
+# Import LibraKAN mixer for node scalars if needed (optional dependency)
+try:
+    from mace.modules.mixers.node_scalar_librakan import NodeScalarLibraKAN
+except Exception:
+    NodeScalarLibraKAN = None
 
 from .blocks import (
     AtomicEnergiesBlock,
@@ -54,8 +56,6 @@ def _call_with_supported_kwargs(ctor: Callable, **kwargs):
     """
     Call `ctor` (or its __init__) passing only parameters it declares.
     If ctor accepts **kwargs, forward everything as-is.
-    This allows us to pass optional knobs (node_mlp_factory/edge_mlp_factory)
-    to custom InteractionBlocks without breaking official blocks.
     """
     try:
         target = getattr(ctor, "__init__", ctor)
@@ -73,12 +73,6 @@ def _call_with_supported_kwargs(ctor: Callable, **kwargs):
     filtered = {k: v for k, v in kwargs.items() if k in allowed}
     return ctor(**filtered)
 
-# =========================================================================================
-# Mixer injection notes
-# - readout_cls: controls which readout block to use (MLP/KAN/KAF/LibraKAN).
-# - readout_kwargs: forwarded to readout constructors (e.g., mlp_factory, spectral params).
-# - interaction_mlp_factories: optional {"node_mlp_factory","edge_mlp_factory"} for LibraKAN.
-# =========================================================================================
 
 def _maybe_irreps(x: Union[o3.Irreps, str]) -> o3.Irreps:
     """Ensure string irreps are converted to o3.Irreps."""
@@ -110,7 +104,10 @@ def _build_readout(
 
 @compile_mode("script")
 class MACE(torch.nn.Module):
-    """MACE with optional MIL pooling residual on the final layer."""
+    """
+    MACE model with optional Physics-Aware Neighbourhood (PAN) Pooling.
+    PAN configuration is passed down to InteractionBlocks.
+    """
     def __init__(
         self,
         r_max: float,
@@ -145,13 +142,15 @@ class MACE(torch.nn.Module):
         oeq_config: Optional[Dict[str, Any]] = None,
         lammps_mliap: Optional[bool] = False,
         readout_cls: Optional[Type[NonLinearReadoutBlock]] = NonLinearReadoutBlock,
-        # MIL knobs
-        use_mil_pooling: bool = True,
-        mil_d_attn: int = 8,
-        mil_dropout: float = 0.1,
+        # === PAN Pooling Configuration ===
+        use_pan: bool = False,
         # Mixer injection knobs
         interaction_mlp_factories: Optional[Dict[str, Optional[Callable[..., torch.nn.Module]]]] = None,
         readout_kwargs: Optional[Dict[str, Any]] = None,
+        # Deprecated/Legacy args (kept for compatibility with old configs, mapped to PAN if appropriate)
+        use_mil_pooling: bool = False,
+        mil_d_attn: int = 8,
+        mil_dropout: float = 0.1,
     ):
         super().__init__()
         self.register_buffer("atomic_numbers", torch.tensor(atomic_numbers, dtype=torch.int64))
@@ -173,6 +172,10 @@ class MACE(torch.nn.Module):
         # store injection configs
         self._interaction_mlp_factories = interaction_mlp_factories or {}
         self._readout_kwargs = readout_kwargs or {}
+
+        # === Handle PAN Config ===
+        # Map legacy 'use_mil_pooling' flag to 'use_pan' if user hasn't updated config yet
+        self.use_pan = use_pan or use_mil_pooling
 
         # Embedding
         node_attr_irreps = o3.Irreps([(num_elements, (0, 1))])
@@ -209,6 +212,7 @@ class MACE(torch.nn.Module):
         if pair_repulsion:
             self.pair_repulsion_fn = ZBLBasis(p=num_polynomial_cutoff)
             self.pair_repulsion = True
+        
         # spherical harmonics
         if not use_so3:
             sh_irreps = o3.Irreps.spherical_harmonics(max_ell)
@@ -244,6 +248,8 @@ class MACE(torch.nn.Module):
             oeq_config=oeq_config,
             node_mlp_factory=self._interaction_mlp_factories.get("node_mlp_factory"),
             edge_mlp_factory=self._interaction_mlp_factories.get("edge_mlp_factory"),
+            # === Pass PAN flag down to blocks ===
+            use_pan=self.use_pan,
         )
         self.interactions = torch.nn.ModuleList([inter])
         use_sc_first = "Residual" in str(interaction_cls_first)
@@ -267,7 +273,6 @@ class MACE(torch.nn.Module):
                 LinearReadoutBlock(hidden_irreps, o3.Irreps(f"{len(heads)}x0e"), cueq_config, oeq_config)
             )
 
-        final_node_irreps: Union[o3.Irreps, str] = hidden_irreps
         for i in range(num_interactions - 1):
             hidden_irreps_out = str(hidden_irreps[0]) if i == num_interactions - 2 else hidden_irreps
             # ----- subsequent interactions (safe filtered kwargs) -----
@@ -286,6 +291,8 @@ class MACE(torch.nn.Module):
                 oeq_config=oeq_config,
                 node_mlp_factory=self._interaction_mlp_factories.get("node_mlp_factory"),
                 edge_mlp_factory=self._interaction_mlp_factories.get("edge_mlp_factory"),
+                # === Pass PAN flag down to blocks ===
+                use_pan=self.use_pan,
             )
             self.interactions.append(inter)
             prod = EquivariantProductBasisBlock(
@@ -300,7 +307,7 @@ class MACE(torch.nn.Module):
                 use_agnostic_product=use_agnostic_product,
             )
             self.products.append(prod)
-            final_node_irreps = hidden_irreps_out
+            
             if i == num_interactions - 2:
                 self.readouts.append(
                     _build_readout(
@@ -318,26 +325,6 @@ class MACE(torch.nn.Module):
                 self.readouts.append(
                     LinearReadoutBlock(hidden_irreps, o3.Irreps(f"{len(heads)}x0e"), cueq_config, oeq_config)
                 )
-
-        # ================= MIL pooling residual (graph-level) =================
-        self.use_mil_pooling = use_mil_pooling
-        self.mil_d_attn = mil_d_attn
-        self.mil_dropout = mil_dropout
-        if self.use_mil_pooling:
-            if isinstance(final_node_irreps, str):
-                self._final_node_irreps = o3.Irreps(final_node_irreps)
-            else:
-                self._final_node_irreps = final_node_irreps
-            feat_dim = self._final_node_irreps.dim
-            self.mil_pre_norm = torch.nn.LayerNorm(feat_dim, eps=1e-6)
-            self.mil_readout = ConjunctivePooling(
-                irreps_in=self._final_node_irreps.simplify(),
-                out_dim=len(self.heads),
-                d_attn=self.mil_d_attn,
-                dropout=self.mil_dropout,
-            )
-            self.mil_gamma_raw = torch.nn.Parameter(torch.zeros(len(self.heads)))
-            self.register_buffer("mil_gamma_cap", torch.tensor(0.3))
 
     @staticmethod
     def _channel_norm(x: torch.Tensor, eps: float = 1e-5, center: bool = True) -> torch.Tensor:
@@ -410,12 +397,14 @@ class MACE(torch.nn.Module):
             node_attrs_slice = data["node_attrs"]
             if is_lammps and i > 0:
                 node_attrs_slice = node_attrs_slice[: lammps_natoms[0]]
+            # NOTE: interaction() now handles PAN pooling internally if enabled
             node_feats, sc = interaction(
                 node_attrs=node_attrs_slice,
                 node_feats=node_feats,
                 edge_attrs=edge_attrs,
                 edge_feats=edge_feats,
                 edge_index=data["edge_index"],
+                edge_lengths=lengths,
                 cutoff=cutoff,
                 first_layer=(i == 0),
                 lammps_class=lammps_class,
@@ -433,24 +422,8 @@ class MACE(torch.nn.Module):
             energies.append(energy)
             node_energies_list.append(node_es)
 
-        # === MIL pooling residual (graph-level) ===
-        if getattr(self, "use_mil_pooling", False):
-            last_feats = self.mil_pre_norm(node_feats_concat[-1])
-            graph_logits: List[torch.Tensor] = []
-            for g in range(num_graphs):
-                mask = (data["batch"] == g)
-                feats_g = last_feats[mask]
-                if feats_g.numel() == 0:
-                    graph_logits.append(
-                        torch.zeros((len(self.heads),), device=last_feats.device, dtype=last_feats.dtype))
-                else:
-                    out_g = self.mil_readout(feats_g)  # [H]
-                    out_g = out_g - out_g.mean()
-                    graph_logits.append(out_g)
-            mil_energy = torch.stack(graph_logits, dim=0)  # [G, H]
-            mil_gamma = self.mil_gamma_cap * torch.tanh(self.mil_gamma_raw)  # [H]
-            energies.append(mil_energy * mil_gamma)
-            node_energies_list.append(torch.zeros_like(node_e0))
+        # Removed incorrect global MIL pooling logic here. 
+        # PAN effects are already included in node_feats via interaction blocks.
 
         contributions = torch.stack(energies, dim=-1)
         total_energy = torch.sum(contributions, dim=-1)
@@ -503,33 +476,11 @@ class ScaleShiftMACE(MACE):
     def __init__(self, atomic_inter_scale: float, atomic_inter_shift: float, **kwargs):
         super().__init__(**kwargs)
         self.scale_shift = ScaleShiftBlock(scale=atomic_inter_scale, shift=atomic_inter_shift)
-        self.use_mil_pooling = getattr(self, "use_mil_pooling", False)
-        self.mil_d_attn = getattr(self, "mil_d_attn", 8)
-        self.mil_dropout = getattr(self, "mil_dropout", 0.1)
-        self.mil_pre_norm = getattr(self, "mil_pre_norm", True)
-        self.mil_use_layernorm = getattr(self, "mil_use_layernorm", True)
-        self.mil_eps = getattr(self, "mil_eps", 1e-6)
-        self.mil_center = getattr(self, "mil_center", False)
-        self.mil_gamma = getattr(self, "mil_gamma", 0.1)
-        self.mil_gamma_cap = getattr(self, "mil_gamma_cap", None)
-        self.mil_no_force_grad = getattr(self, "mil_no_force_grad", False)
-        if self.use_mil_pooling:
-            feat_dim = None
-            try:
-                final_irreps = self.products[-1].irreps_out
-                if isinstance(final_irreps, str):
-                    final_irreps = o3.Irreps(final_irreps)
-                feat_dim = final_irreps.dim
-            except Exception:
-                feat_dim = kwargs.get("mil_feat_dim", None)
-            if self.mil_use_layernorm and (feat_dim is not None) and (feat_dim > 0):
-                self.mil_norm = torch.nn.LayerNorm(
-                    normalized_shape=feat_dim,
-                    eps=self.mil_eps,
-                    elementwise_affine=True,
-                )
-            else:
-                self.mil_norm = torch.nn.Identity()
+
+    def set_node_librakan_enabled(self, flag: bool) -> None:
+        for m in self.modules():
+            if NodeScalarLibraKAN is not None and isinstance(m, NodeScalarLibraKAN):
+                m.set_enabled(flag)
 
     def forward(
         self,
@@ -594,12 +545,14 @@ class ScaleShiftMACE(MACE):
             node_attrs_slice = data["node_attrs"]
             if is_lammps and i > 0:
                 node_attrs_slice = node_attrs_slice[: lammps_natoms[0]]
+            # NOTE: interaction() now handles PAN pooling internally if enabled
             node_feats, sc = interaction(
                 node_attrs=node_attrs_slice,
                 node_feats=node_feats,
                 edge_attrs=edge_attrs,
                 edge_feats=edge_feats,
                 edge_index=data["edge_index"],
+                edge_lengths=lengths,
                 cutoff=cutoff,
                 first_layer=(i == 0),
                 lammps_class=lammps_class,
@@ -618,36 +571,8 @@ class ScaleShiftMACE(MACE):
         node_inter_es = self.scale_shift(node_inter_es, node_heads)
         inter_e = scatter_sum(node_inter_es, data["batch"], dim=0, dim_size=num_graphs)
 
-        # === MIL graph-level residual (ScaleShiftMACE) ===
-        if getattr(self, "use_mil_pooling", False):
-            last_feats = node_feats_list[-1]  # [N, C]
-            feats_for_mil = last_feats
-            if getattr(self, "mil_pre_norm", False):
-                if getattr(self, "mil_use_layernorm", False) and hasattr(self, "mil_norm"):
-                    feats_for_mil = self.mil_norm(feats_for_mil)
-                else:
-                    eps = getattr(self, "mil_eps", 1e-6)
-                    center = getattr(self, "mil_center", True)
-                    feats_for_mil = self._channel_norm(feats_for_mil, eps=eps, center=center)
-            graph_logits = []
-            for g in range(num_graphs):
-                mask = (data["batch"] == g)
-                feats_g = feats_for_mil[mask]
-                if feats_g.numel() == 0:
-                    graph_logits.append(torch.zeros((len(self.heads),), device=feats_for_mil.device, dtype=feats_for_mil.dtype))
-                else:
-                    out_g = self.mil_readout(feats_g)  # [H]
-                    if hasattr(self, "mil_gamma") and self.mil_gamma is not None:
-                        gamma = self.mil_gamma
-                        if hasattr(self, "mil_gamma_cap") and self.mil_gamma_cap is not None:
-                            gamma = torch.clamp(torch.as_tensor(gamma, device=feats_for_mil.device, dtype=feats_for_mil.dtype), max=self.mil_gamma_cap).item()
-                        out_g = out_g * gamma
-                    if getattr(self, "mil_center", False):
-                        out_g = out_g - out_g.mean(keepdim=True)
-                    graph_logits.append(out_g)
-            mil_e = torch.stack(graph_logits, dim=0)
-            mil_e_to_add = mil_e.detach() if getattr(self, "mil_no_force_grad", False) else mil_e
-            inter_e = inter_e + mil_e_to_add
+        # Removed incorrect global MIL pooling logic.
+        
         total_energy = e0 + inter_e
         node_energy = node_e0.clone().double() + node_inter_es.clone().double()
 

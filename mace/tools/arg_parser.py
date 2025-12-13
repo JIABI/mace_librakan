@@ -651,32 +651,122 @@ def build_default_arg_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.1,
     )
-    # mixers
-    parser.add_argument("--kan_readout", action="store_true", help="Use KAN readout")
-    parser.add_argument("--kaf_readout", action="store_true", help="Use KAF readout")
-    parser.add_argument("--librakan_readout", action="store_true", help="Use LibraKAN readout")
-    parser.add_argument("--readout_hidden", type=str, default=None)
-    # KAF
-    parser.add_argument("--kaf_F", type=int, default=256)
-    parser.add_argument("--kaf_dropout", type=float, default=0.0)
-    parser.add_argument("--kaf_use_layernorm", type=str, default="false")
-    parser.add_argument("--kaf_base_activation", type=str, default="gelu")
-    parser.add_argument("--kaf_activation_expectation", type=float, default=1.64)
-    parser.add_argument("--kaf_hidden", type=str, default=None)
-    # LibraKAN
-    parser.add_argument("--libra_F", type=int, default=512)
-    parser.add_argument("--libra_spectral_scale", type=float, default=1.0)
-    parser.add_argument("--libra_es_beta", type=float, default=6.0)
-    parser.add_argument("--libra_es_fmax", type=str, default=None)
-    parser.add_argument("--libra_lambda_init", type=float, default=0.01)
-    parser.add_argument("--libra_lambda_trainable", type=str, default="true")
-    parser.add_argument("--libra_l1_alpha", type=float, default=3e-4)
-    parser.add_argument("--libra_dropout", type=float, default=0.0)
-    parser.add_argument("--libra_base_activation", type=str, default="gelu")
-    parser.add_argument("--libra_use_layernorm", type=str, default="false")
-    # site mixers
-    parser.add_argument("--node_librakan", action="store_true")
-    parser.add_argument("--edge_librakan", action="store_true")
+    # =========================
+    # Mixer arguments (readout / node / edge)
+    # =========================
+    mix = parser.add_argument_group("Mixers")
+
+    # --- which readout mixer to use ---
+    mix.add_argument("--librakan_readout", action="store_true",
+                     help="Use LibraKAN as readout MLP")
+    mix.add_argument("--kaf_readout", action="store_true",
+                     help="Use KAF as readout MLP")
+    mix.add_argument("--kan_readout", action="store_true",
+                     help="Use KAN as readout MLP")
+    # optional readout hidden spec, accepts "1024" or "[1024,512]" or "1024,512"
+    mix.add_argument("--readout_hidden", type=str, default=None,
+                     help="Hidden size(s) for readout mixer; e.g. 1024 or [1024,512]")
+
+    # --- global LibraKAN defaults (fallbacks used by node/edge factories) ---
+    mix.add_argument("--libra_F", type=int, default=256,
+                     help="Default dictionary size F (fallback for site mixers)")
+    mix.add_argument("--libra_spectral_scale", type=float, default=1.0,
+                     help="Default spectral scale (fallback)")
+    mix.add_argument("--libra_es_beta", type=float, default=6.0,
+                     help="Kept for API compatibility")
+    mix.add_argument("--libra_es_fmax", type=str, default=None,
+                     help="Override max frequency for spectral branch; e.g. 0.6")
+    mix.add_argument("--libra_lambda_init", type=float, default=1e-2,
+                     help="Initial lambda for shrinkage")
+    mix.add_argument("--libra_lambda_trainable", type=str, default="true",
+                     help="Whether lambda is trainable (true/false)")
+    mix.add_argument("--libra_p", type=float, default=1.0,
+                     help="p for generalized shrinkage")
+    mix.add_argument("--libra_l1_alpha", type=float, default=0.0,
+                     help="(Optional) L1 reg strength if your impl uses it")
+    mix.add_argument("--libra_dropout", type=float, default=0.0,
+                     help="Dropout in local branch (if supported)")
+    mix.add_argument("--libra_base_activation", type=str, default="gelu",
+                     help="Local branch activation: gelu|relu|silu|...")
+    mix.add_argument("--libra_use_layernorm", type=str, default="false",
+                     help="Apply LayerNorm in local branch (true/false)")
+
+    # --- READOUT-scoped LibraKAN params (细粒度控制 readout) ---
+    mix.add_argument("--libra_readout_F", type=str, default=None,
+                     help="Readout-specific F; overrides global libra_F if set")
+    mix.add_argument("--libra_readout_spectral_scale", type=float, default=1.0,
+                     help="Readout spectral scale")
+    mix.add_argument("--libra_readout_es_fmax", type=str, default=None,
+                     help="Readout max frequency; e.g. 0.7")
+    mix.add_argument("--libra_readout_alpha_min", type=float, default=0.0,
+                     help="Lower bound on alpha for readout fusion")
+    mix.add_argument("--libra_readout_alpha_tau", type=float, default=1.0,
+                     help="Temperature for alpha squashing (readout)")
+    mix.add_argument("--libra_readout_learn_omega", type=str, default="true",
+                     help="Learn frequency dictionary in readout (true/false)")
+    mix.add_argument("--libra_readout_use_layernorm", type=str, default="false",
+                     help="LayerNorm in readout local branch (true/false)")
+    mix.add_argument("--libra_readout_dropout", type=float, default=0.0,
+                     help="Dropout in readout local branch")
+    mix.add_argument("--libra_readout_local_kind", type=str, default="mlp",
+                     help="Local path kind: act|mlp|mlp_ln")
+    mix.add_argument("--libra_readout_local_layers", type=str, default="[H]",
+                     help='Local MLP layout for readout, e.g. "[H]" or "[H, H//2]" or "512,256"')
+
+    # --- enable LibraKAN on site MLPs ---
+    mix.add_argument("--node_librakan", action="store_true",
+                     help="Replace node MLP with LibraKAN")
+    mix.add_argument("--edge_librakan", action="store_true",
+                     help="Replace edge MLP with LibraKAN")
+
+    # NODE-scoped params
+    mix.add_argument("--libra_node_scalar_only", action="store_true", help="Node LibraKAN on l=0 scalars only")
+    mix.add_argument("--libra_node_F", type=int, default=None)
+    mix.add_argument("--libra_node_spectral_scale", type=float, default=0.8)
+    mix.add_argument("--libra_node_es_fmax", type=float, default=None)
+    mix.add_argument("--libra_node_alpha_min", type=float, default=0.10)
+    mix.add_argument("--libra_node_alpha_tau", type=float, default=1.0)
+    mix.add_argument("--libra_node_local_kind", type=str, default="act", choices=["act", "mlp"])
+    mix.add_argument("--libra_node_local_layers", type=str, default="")
+    mix.add_argument("--libra_node_use_layernorm", type=str, default="false")
+    mix.add_argument("--libra_node_dropout", type=float, default=0.0)
+    mix.add_argument("--libra_node_learn_omega", type=str, default="true")
+
+    # EDGE-scoped params
+    mix.add_argument("--libra_edge_F", type=str, default=None,
+                     help="Edge-specific F; overrides global libra_F if set")
+    mix.add_argument("--libra_edge_spectral_scale", type=float, default=0.6,
+                     help="Edge spectral scale")
+    mix.add_argument("--libra_edge_es_fmax", type=str, default=None,
+                     help="Edge max frequency; e.g. 0.6")
+    mix.add_argument("--libra_edge_alpha_min", type=float, default=0.05,
+                     help="Lower bound on alpha for edge fusion")
+    mix.add_argument("--libra_edge_alpha_tau", type=float, default=1.2,
+                     help="Temperature for alpha at edge")
+    mix.add_argument("--libra_edge_learn_omega", type=str, default="true",
+                     help="Learn omega at edge (true/false)")
+    mix.add_argument("--libra_edge_use_layernorm", type=str, default="false",
+                     help="LayerNorm in edge local branch (true/false)")
+    mix.add_argument("--libra_edge_dropout", type=float, default=0.0,
+                     help="Dropout in edge local branch")
+    mix.add_argument("--libra_edge_local_kind", type=str, default="act",
+                     help="Local kind for edge: act|mlp|mlp_ln")
+    mix.add_argument("--libra_edge_local_layers", type=str, default="",
+                     help='Local MLP layout for edge, e.g. "[H]" or "H, H//2"')
+
+    # --- KAF/KAN specific (可按你的适配器需要扩展) ---
+    mix.add_argument("--kaf_hidden", type=str, default=None,
+                     help="Hidden size(s) for KAF readout; e.g. 1024 or [1024,512]")
+    mix.add_argument("--kaf_F", type=int, default=256,
+                     help="KAF dictionary size if applicable")
+    mix.add_argument("--kaf_dropout", type=float, default=0.0,
+                     help="KAF dropout")
+    mix.add_argument("--kaf_use_layernorm", type=str, default="false",
+                     help="KAF LayerNorm (true/false)")
+    mix.add_argument("--kaf_base_activation", type=str, default="gelu",
+                     help="KAF base activation")
+    mix.add_argument("--kaf_activation_expectation", type=float, default=1.64,
+                     help="KAF activation expectation")
 
     # Loss and optimization
     parser.add_argument(

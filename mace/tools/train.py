@@ -338,6 +338,10 @@ def train(
         else:
             if swa_start:
                 logging.info("Changing loss based on Stage Two Weights")
+                if hasattr(model, "set_node_librakan_enabled"):
+                    logging.info("Disabling NodeScalarLibraKan for Stage 2")
+                    model.set_node_librakan_enabled(False)
+                    model._node_librakan_disabled = True
                 lowest_loss = np.inf
                 swa_start = False
                 keep_last = True
@@ -345,7 +349,6 @@ def train(
             swa.model.update_parameters(model)
             if epoch > start_epoch:
                 swa.scheduler.step()
-
         # Train
         if distributed:
             train_sampler.set_epoch(epoch)
